@@ -50,7 +50,7 @@ docker compose up -d --build
 | Postgres | `localhost:5432` (`podbot` / `podbot`) |
 | Redis | `localhost:6379` |
 
-Đăng nhập admin: `admin@podbot.local` / `admin123` (đổi trong `.env`).
+Đăng nhập admin: `admin@podbot.io` / `admin123` (đổi trong `.env`).
 
 ## 🔑 Kết nối Printify (hướng dẫn từng bước)
 
@@ -122,7 +122,7 @@ Chạy thủ công 1 chiến dịch (không chờ cron):
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@podbot.local","password":"admin123"}' | jq -r .access_token)
+  -d '{"email":"admin@podbot.io","password":"admin123"}' | jq -r .access_token)
 
 curl -X POST http://localhost:8000/v1/campaigns/1/run \
   -H "Authorization: Bearer $TOKEN"

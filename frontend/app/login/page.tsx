@@ -6,7 +6,7 @@ import { api, setToken } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@podbot.local");
+  const [email, setEmail] = useState("admin@podbot.io");
   const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
 
@@ -41,7 +41,7 @@ export default function LoginPage() {
           {loading ? "Đang đăng nhập..." : "Đăng nhập"}
         </button>
         <p className="text-xs text-slate-500">
-          Tài khoản admin mặc định: <code>admin@podbot.local</code> / <code>admin123</code>.
+          Tài khoản admin mặc định: <code>admin@podbot.io</code> / <code>admin123</code>.
           Đổi trong <code>.env</code>.
         </p>
       </form>
