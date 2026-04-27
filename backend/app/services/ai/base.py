@@ -16,6 +16,10 @@ class GeneratedImage:
 class AIDesignEngine(ABC):
     name: str = "base"
 
+    def __init__(self, api_key: str | None = None) -> None:
+        # Optional override; engines fall back to env-var settings if None.
+        self.api_key_override = api_key
+
     @abstractmethod
     def generate(self, prompt: str, model: str | None = None, size: str = "1024x1024") -> GeneratedImage:
         ...
@@ -32,16 +36,31 @@ class AIDesignEngine(ABC):
         )
 
 
-def get_engine(name: str) -> AIDesignEngine:
+def get_engine(name: str, api_key: str | None = None) -> AIDesignEngine:
     from app.services.ai.gemini import GeminiEngine
     from app.services.ai.openai_engine import OpenAIDalleEngine
     from app.services.ai.replicate_engine import ReplicateEngine
 
     name = (name or "gemini").lower()
     if name == "gemini":
-        return GeminiEngine()
+        return GeminiEngine(api_key=api_key)
     if name in ("openai", "dalle", "dall-e"):
-        return OpenAIDalleEngine()
+        return OpenAIDalleEngine(api_key=api_key)
     if name == "replicate":
-        return ReplicateEngine()
+        return ReplicateEngine(api_key=api_key)
     raise ValueError(f"Unknown AI engine: {name}")
+
+
+def get_engine_for_user(name: str, user_id: int, db) -> AIDesignEngine:
+    """Pick the user's saved key for `name` if any, else fall back to env."""
+    from app.core.crypto import decrypt
+    from app.models import AIKey
+
+    row = (
+        db.query(AIKey)
+        .filter_by(user_id=user_id, engine=name, is_active=True)
+        .order_by(AIKey.id.desc())
+        .first()
+    )
+    api_key = decrypt(row.encrypted_key) if row else None
+    return get_engine(name, api_key=api_key)

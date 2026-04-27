@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     celery_result_backend: str = Field(default="redis://redis:6379/2")
 
     # --- Default admin ---
-    admin_email: str = "admin@podbot.local"
+    admin_email: str = "admin@podbot.io"
     admin_password: str = "admin123"
 
     # --- AI ---

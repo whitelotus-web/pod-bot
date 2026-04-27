@@ -36,17 +36,24 @@ def test_mockup_templates():
     assert "tshirt_black" in templates
 
 
-def test_platform_meta_covers_all():
+def test_platform_meta_covers_first_class():
     from app.services.platforms import PLATFORM_META
 
-    assert set(PLATFORM_META.keys()) >= {
-        "printify",
-        "printful",
-        "etsy",
-        "redbubble",
-        "teespring",
-        "merch_amazon",
-    }
+    # Only the 3 API-backed platforms are supported; Selenium-only platforms
+    # (Redbubble / Teespring / Merch by Amazon) are intentionally excluded.
+    assert set(PLATFORM_META.keys()) == {"printify", "printful", "etsy"}
+    for meta in PLATFORM_META.values():
+        assert meta["supported"] is True
+
+
+def test_platform_factory_rejects_legacy():
+    import pytest
+
+    from app.services.platforms import get_platform
+
+    for legacy in ("redbubble", "teespring", "merch_amazon"):
+        with pytest.raises(ValueError, match="Unknown platform"):
+            get_platform(legacy, account=None)
 
 
 def test_celery_tasks_registered():
@@ -55,3 +62,31 @@ def test_celery_tasks_registered():
 
     assert "app.workers.pipeline.run_campaign" in celery_app.tasks
     assert "app.workers.scheduler.tick" in celery_app.tasks
+
+
+def test_crypto_roundtrip():
+    from app.core.crypto import decrypt, encrypt, mask
+
+    token = encrypt("sk-test-1234567890")
+    assert token != "sk-test-1234567890"
+    assert decrypt(token) == "sk-test-1234567890"
+    assert mask("sk-test-1234567890") == "sk-t••••••7890"
+
+
+def test_prompt_templates_library():
+    from app.services.prompts import TEMPLATES, TEMPLATES_BY_ID, compose_preview
+
+    assert len(TEMPLATES) >= 5
+    ids = {t.id for t in TEMPLATES}
+    assert len(ids) == len(TEMPLATES)  # unique ids
+    assert "vintage_retro" in TEMPLATES_BY_ID
+    final = compose_preview("cat lovers", niche="cats", style=TEMPLATES[0].style)
+    assert "cat lovers" in final
+    assert "vintage" in final.lower()
+
+
+def test_engine_accepts_override_key():
+    from app.services.ai import get_engine
+
+    eng = get_engine("gemini", api_key="fake")
+    assert eng.api_key_override == "fake"

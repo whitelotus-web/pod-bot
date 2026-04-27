@@ -1,21 +1,40 @@
-"""JWT + password hashing helpers."""
+"""JWT + password hashing helpers.
+
+Uses bcrypt directly (not passlib) — passlib's introspection of bcrypt 4.x
+breaks at startup because of a >72-byte detection hash.
+"""
 from datetime import UTC, datetime, timedelta
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
+
+# bcrypt only accepts up to 72 bytes; longer passwords are pre-hashed via
+# SHA-256 to a 64-char hex string that fits well within the limit.
+_BCRYPT_MAX = 72
+
+
+def _prepare(password: str) -> bytes:
+    raw = password.encode("utf-8")
+    if len(raw) <= _BCRYPT_MAX:
+        return raw
+    import hashlib
+
+    return hashlib.sha256(raw).hexdigest().encode("utf-8")
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_prepare(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(_prepare(plain), hashed.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(subject: str, expires_minutes: int | None = None) -> str:

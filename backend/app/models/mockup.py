@@ -16,6 +16,7 @@ class Mockup(Base):
     product_type: Mapped[str] = mapped_column(String(64))  # tshirt, hoodie...
     template: Mapped[str] = mapped_column(String(128), default="tshirt_white")
     file_path: Mapped[str] = mapped_column(String(512))
+    source: Mapped[str] = mapped_column(String(32), default="pillow")  # pillow | printify
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     design = relationship("Design")

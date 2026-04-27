@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, mediaURL, type GenerateResponse, type PromptTemplate } from "@/lib/api";
 
 const ALL_KEYWORD_SOURCES = [
   { id: "google_trends", label: "Google Trends" },
@@ -13,12 +14,9 @@ const ALL_KEYWORD_SOURCES = [
 ];
 
 const ALL_PLATFORMS = [
-  { id: "printify", label: "Printify", ok: true },
-  { id: "printful", label: "Printful", ok: true },
-  { id: "etsy", label: "Etsy", ok: true },
-  { id: "redbubble", label: "Redbubble (Selenium)", ok: false },
-  { id: "teespring", label: "Teespring / Spring (Selenium)", ok: false },
-  { id: "merch_amazon", label: "Merch by Amazon (Selenium)", ok: false },
+  { id: "printify", label: "Printify", tagline: "Core — rẻ nhất, mockup miễn phí" },
+  { id: "printful", label: "Printful", tagline: "Premium — chất lượng cao" },
+  { id: "etsy", label: "Etsy", tagline: "Marketplace — 95M người mua/tháng" },
 ];
 
 export default function NewCampaignPage() {
@@ -36,6 +34,60 @@ export default function NewCampaignPage() {
     target_platforms: ["printify"] as string[],
     schedule_cron: "",
   });
+
+  const [templates, setTemplates] = useState<PromptTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
+  const [previewPrompt, setPreviewPrompt] = useState<string>("");
+  const [previewBusy, setPreviewBusy] = useState(false);
+
+  const [genBusy, setGenBusy] = useState(false);
+  const [genResult, setGenResult] = useState<GenerateResponse | null>(null);
+
+  useEffect(() => {
+    api.get<PromptTemplate[]>("/v1/prompts/templates").then(setTemplates).catch(() => {});
+  }, []);
+
+  function applyTemplate(id: string) {
+    setSelectedTemplate(id);
+    const t = templates.find((x) => x.id === id);
+    if (t) setForm((f) => ({ ...f, style_prompt: t.style }));
+  }
+
+  async function refreshPreview() {
+    setPreviewBusy(true);
+    try {
+      const r = await api.post<{ final_prompt: string }>("/v1/prompts/preview", {
+        keyword: form.niche.split(",")[0]?.trim() || form.niche,
+        niche: form.niche,
+        style: form.style_prompt,
+      });
+      setPreviewPrompt(r.final_prompt);
+    } catch (e: any) {
+      toast.error(e?.message || "Lỗi");
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  async function generateTest() {
+    setGenBusy(true);
+    setGenResult(null);
+    try {
+      const r = await api.post<GenerateResponse>("/v1/prompts/generate", {
+        keyword: form.niche.split(",")[0]?.trim() || form.niche,
+        niche: form.niche,
+        style: form.style_prompt,
+        engine: form.ai_engine,
+        persist: true,
+      });
+      setGenResult(r);
+      toast.success("Đã sinh design thử");
+    } catch (e: any) {
+      toast.error(e?.message || "Lỗi");
+    } finally {
+      setGenBusy(false);
+    }
+  }
 
   function toggle(field: "keyword_sources" | "target_platforms", id: string) {
     setForm((f) => ({
@@ -75,6 +127,86 @@ export default function NewCampaignPage() {
         </div>
 
         <div>
+          <label className="label">Mẫu prompt (tuỳ chọn)</label>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            Click 1 mẫu → tự fill phong cách. Bạn có thể sửa lại sau.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {templates.map((t) => {
+              const on = selectedTemplate === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => applyTemplate(t.id)}
+                  className={`rounded-lg p-2 text-left text-xs transition ${
+                    on
+                      ? "bg-brand-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <div className="font-semibold">{t.label}</div>
+                  <div className={`mt-0.5 ${on ? "text-white/80" : "text-slate-500 dark:text-slate-400"}`}>
+                    {t.description}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/40">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+              <Eye size={14} /> Prompt cuối gửi cho AI
+            </span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className="btn-outline px-2 py-1 text-xs"
+                onClick={refreshPreview}
+                disabled={previewBusy}
+              >
+                {previewBusy ? <Loader2 size={12} className="animate-spin" /> : "Xem trước"}
+              </button>
+              <button
+                type="button"
+                className="btn-primary flex items-center gap-1 px-2 py-1 text-xs"
+                onClick={generateTest}
+                disabled={genBusy}
+                title="Sinh thử 1 design để xem kết quả AI thực tế trước khi chạy full campaign"
+              >
+                {genBusy ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Sparkles size={12} />
+                )}
+                Generate thử
+              </button>
+            </div>
+          </div>
+          <pre className="whitespace-pre-wrap break-words text-slate-600 dark:text-slate-400">
+            {previewPrompt || "(bấm 'Xem trước' để render prompt cuối — bao gồm style + keyword + negative prompt)"}
+          </pre>
+          {genResult?.file_path && (
+            <div className="mt-2 flex items-center gap-2 rounded border border-emerald-300 bg-white p-2 dark:border-emerald-700 dark:bg-slate-900">
+              <img
+                src={mediaURL(genResult.file_path)}
+                alt="generated"
+                className="h-20 w-20 rounded object-cover"
+              />
+              <div className="text-xs">
+                <div className="font-semibold text-emerald-700 dark:text-emerald-400">
+                  ✓ Sinh thành công
+                </div>
+                <div className="text-slate-500">engine: {genResult.engine} · model: {genResult.model || "default"}</div>
+                <div className="text-slate-500">design_id: {genResult.design_id} (xem trong tab Designs)</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div>
           <label className="label">Nguồn keyword</label>
           <div className="flex flex-wrap gap-2">
             {ALL_KEYWORD_SOURCES.map((s) => {
@@ -82,7 +214,7 @@ export default function NewCampaignPage() {
               return (
                 <button key={s.id} type="button"
                   onClick={() => toggle("keyword_sources", s.id)}
-                  className={`rounded-full px-3 py-1 text-sm ${on ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700"}`}>
+                  className={`rounded-full px-3 py-1 text-sm ${on ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>
                   {s.label}
                 </button>
               );
@@ -115,15 +247,19 @@ export default function NewCampaignPage() {
 
         <div>
           <label className="label">Platform đăng bán</label>
-          <div className="flex flex-wrap gap-2">
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            💡 Khuyến nghị: chọn <b>Printify</b> + kết nối Etsy shop trong Printify dashboard →
+            sản phẩm sẽ tự đồng bộ sang Etsy sau khi bot đăng.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
             {ALL_PLATFORMS.map((p) => {
               const on = form.target_platforms.includes(p.id);
               return (
                 <button key={p.id} type="button"
-                  title={p.ok ? "Có API chính thức" : "Chưa có public API — cần Selenium"}
                   onClick={() => toggle("target_platforms", p.id)}
-                  className={`rounded-full px-3 py-1 text-sm ${on ? "bg-brand-500 text-white" : p.ok ? "bg-slate-100 text-slate-700" : "bg-amber-50 text-amber-700"}`}>
-                  {p.label}
+                  className={`rounded-lg p-3 text-left text-sm transition ${on ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"}`}>
+                  <div className="font-semibold">{p.label}</div>
+                  <div className={`text-xs ${on ? "text-white/80" : "text-slate-500 dark:text-slate-400"}`}>{p.tagline}</div>
                 </button>
               );
             })}
@@ -133,7 +269,7 @@ export default function NewCampaignPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label">Chế độ tự động</label>
-            <select className="input" value={form.auto_mode} onChange={(e) => setForm({ ...form, auto_mode: e.target.value as any })}>
+            <select className="input" value={form.auto_mode} onChange={(e) => setForm({ ...form, auto_mode: e.target.value as "semi" | "full" })}>
               <option value="semi">Semi — chờ duyệt</option>
               <option value="full">Full — tự đăng</option>
             </select>

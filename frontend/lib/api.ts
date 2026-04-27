@@ -129,6 +129,34 @@ export type PlatformAccount = {
   updated_at: string;
 };
 
+export type AIKey = {
+  id: number;
+  engine: "gemini" | "openai" | "replicate";
+  label: string;
+  masked_key: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type PromptTemplate = {
+  id: string;
+  label: string;
+  description: string;
+  style: string;
+  sample_prompt: string;
+};
+
+export type AIKeyTestResponse = { ok: boolean; message: string };
+
+export type GenerateResponse = {
+  final_prompt: string;
+  image_base64: string | null;
+  file_path: string | null;
+  design_id: number | null;
+  engine: string;
+  model: string | null;
+};
+
 export type RunLog = {
   id: number;
   campaign_id: number | null;

@@ -51,6 +51,41 @@ def reject_design(
     return {"ok": True}
 
 
+@router.post("/{design_id}/regenerate", response_model=DesignRead)
+def regenerate_design(
+    design_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> DesignRead:
+    """Re-run the AI engine with the same prompt and replace the image file.
+
+    Useful in semi-auto review mode when a user doesn't like the first output
+    but wants to keep prompt + metadata.
+    """
+    from pathlib import Path
+
+    from app.core.config import settings
+    from app.services.ai.base import get_engine_for_user
+
+    d = db.get(Design, design_id)
+    if not d:
+        raise HTTPException(404, "Không tìm thấy design")
+
+    engine = get_engine_for_user(d.engine, user.id, db)
+    try:
+        img = engine.generate(d.prompt, model=d.model)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"AI generate failed: {exc}") from exc
+
+    fpath = Path(settings.media_root) / d.file_path
+    fpath.parent.mkdir(parents=True, exist_ok=True)
+    fpath.write_bytes(img.image_bytes)
+    d.status = "ready"
+    db.commit()
+    db.refresh(d)
+    return DesignRead.model_validate(d)
+
+
 @router.post("/{design_id}/publish")
 def publish_design(
     design_id: int,

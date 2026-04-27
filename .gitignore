@@ -34,3 +34,4 @@ media/
 .idea/
 *.swp
 .DS_Store
+frontend/tsconfig.tsbuildinfo

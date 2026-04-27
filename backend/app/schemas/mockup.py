@@ -10,4 +10,5 @@ class MockupRead(BaseModel):
     product_type: str
     template: str
     file_path: str
+    source: str = "pillow"
     created_at: datetime

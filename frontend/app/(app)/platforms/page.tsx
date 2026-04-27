@@ -3,7 +3,14 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, type PlatformAccount } from "@/lib/api";
 
-type Meta = Record<string, { label: string; auth: string; supported: boolean }>;
+type Meta = Record<string, {
+  label: string;
+  auth: string;
+  tier?: string;
+  supported: boolean;
+  tagline?: string;
+  setup_url?: string;
+}>;
 
 export default function PlatformsPage() {
   const [meta, setMeta] = useState<Meta>({});
@@ -41,6 +48,26 @@ export default function PlatformsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Kết nối Platform</h1>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {Object.entries(meta).map(([k, v]) => (
+          <div key={k} className="card p-4">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">{v.label}</div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase text-slate-600">
+                {v.tier || v.auth}
+              </span>
+            </div>
+            {v.tagline && <p className="mt-1 text-xs text-slate-500">{v.tagline}</p>}
+            {v.setup_url && (
+              <a href={v.setup_url} target="_blank" rel="noreferrer"
+                className="mt-2 inline-block text-xs text-brand-600 hover:underline">
+                Lấy API key ↗
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
 
       <div className="card p-5">
         <h2 className="mb-3 text-lg font-semibold">Thêm tài khoản mới</h2>

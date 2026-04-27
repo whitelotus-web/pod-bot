@@ -45,31 +45,47 @@ class PODPlatform(ABC):
 
 def get_platform(platform_name: str, account) -> PODPlatform:
     from app.services.platforms.etsy import EtsyPlatform
-    from app.services.platforms.merch_amazon import MerchAmazonPlatform
     from app.services.platforms.printful import PrintfulPlatform
     from app.services.platforms.printify import PrintifyPlatform
-    from app.services.platforms.redbubble import RedbubblePlatform
-    from app.services.platforms.teespring import TeespringPlatform
 
     registry: dict[str, type[PODPlatform]] = {
         "printify": PrintifyPlatform,
         "printful": PrintfulPlatform,
         "etsy": EtsyPlatform,
-        "redbubble": RedbubblePlatform,
-        "teespring": TeespringPlatform,
-        "merch_amazon": MerchAmazonPlatform,
     }
     cls = registry.get(platform_name)
     if cls is None:
-        raise ValueError(f"Unknown platform: {platform_name}")
+        raise ValueError(
+            f"Unknown platform: {platform_name}. "
+            "Supported: printify, printful, etsy."
+        )
     return cls(account)
 
 
+# Metadata for the dashboard UI. Only API-backed platforms are listed.
 PLATFORM_META = {
-    "printify": {"label": "Printify", "auth": "api_key", "supported": True},
-    "printful": {"label": "Printful", "auth": "api_key", "supported": True},
-    "etsy": {"label": "Etsy", "auth": "oauth2", "supported": True},
-    "redbubble": {"label": "Redbubble", "auth": "selenium", "supported": False},
-    "teespring": {"label": "Teespring / Spring", "auth": "selenium", "supported": False},
-    "merch_amazon": {"label": "Merch by Amazon", "auth": "selenium", "supported": False},
+    "printify": {
+        "label": "Printify",
+        "auth": "api_key",
+        "tier": "core",
+        "supported": True,
+        "tagline": "Rẻ nhất, mockup miễn phí, auto-sync sang Etsy.",
+        "setup_url": "https://printify.com/app/account/api",
+    },
+    "printful": {
+        "label": "Printful",
+        "auth": "api_key",
+        "tier": "premium",
+        "supported": True,
+        "tagline": "Chất lượng cao cấp, fulfillment nhanh.",
+        "setup_url": "https://developers.printful.com/",
+    },
+    "etsy": {
+        "label": "Etsy",
+        "auth": "oauth2",
+        "tier": "marketplace",
+        "supported": True,
+        "tagline": "Marketplace có sẵn 95M người mua/tháng.",
+        "setup_url": "https://www.etsy.com/developers/your-apps",
+    },
 }

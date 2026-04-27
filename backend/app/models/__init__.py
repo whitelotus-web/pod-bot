@@ -1,4 +1,5 @@
 """Import all models here so Alembic sees them."""
+from app.models.ai_key import AIKey
 from app.models.campaign import Campaign
 from app.models.design import Design
 from app.models.keyword import Keyword
@@ -17,5 +18,6 @@ __all__ = [
     "Mockup",
     "Product",
     "RunLog",
+    "AIKey",
 ]
 __all_models__ = list(__all__)
