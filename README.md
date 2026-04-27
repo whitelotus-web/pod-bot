@@ -1,172 +1,147 @@
-# POD Bot — Tự động tìm keyword → AI design → mockup → đăng bán áo thun
+# POD Bot — Auto Keyword → AI Design → Mockup → Đăng bán
 
-Hệ thống tự động hoá pipeline Print-on-Demand:
+Hệ thống full-stack tự động hoá pipeline Print-on-Demand. Triết lý: **"ngon bổ rẻ"** — chỉ
+hỗ trợ những platform có API thật, đáng tin, dễ mở rộng.
 
 ```
- [ Google Trends / Etsy / Amazon / Pinterest / TikTok ]
-                       │
-                       ▼
-            [ Keyword Aggregator ]  ← xếp hạng theo điểm số
-                       │
-                       ▼
-  [ AI Designer ]  ← Gemini / DALL-E / SDXL (plug-in)
-                       │
-                       ▼
-        [ Mockup Maker ]  ← Pillow compositor
-                       │
-                       ▼
- [ Publisher Adapters ]  ← Printify · Printful · Etsy · Redbubble · …
+ ┌──────────────────────────────────────────────────────────┐
+ │ Google Trends · Etsy · Amazon BSR · Pinterest · TikTok   │
+ └──────────────────────────┬───────────────────────────────┘
+                            ▼
+                 [ Keyword Aggregator ]
+                            │  (tổng hợp + xếp hạng)
+                            ▼
+            [ AI Designer ] · Gemini / DALL·E / SDXL
+                            │
+                            ▼
+            [ Mockup Maker ] · Pillow + Printify
+                            │
+                            ▼
+   [ Publisher ]   Printify (core) → auto-sync sang Etsy
+                   Printful (premium tier)
 ```
 
-## ✨ Tính năng chính
+## ✨ Vì sao chỉ 3 platform?
 
-- **Keyword Scout** — tổng hợp nhiều nguồn trend (Google Trends, Etsy, Amazon BSR, Pinterest, TikTok), chuẩn hoá điểm và xếp hạng.
-- **AI Designer** — sinh design áo thun từ prompt được tối ưu cho POD (background trong suốt, không watermark, độ tương phản cao). Đổi engine chỉ cần dropdown: `Gemini` · `OpenAI DALL-E` · `Replicate (SDXL / Flux / …)`.
-- **Mockup Maker** — ghép design lên template áo (đi kèm template mẫu vẽ bằng Pillow — thay bằng ảnh studio thật dễ dàng).
-- **Auto Publisher** — adapter riêng cho từng platform. Đăng API thật cho **Printify**, **Printful**, **Etsy**; skeleton Selenium cho **Redbubble / Teespring / Merch by Amazon** (các platform này không có public API).
-- **Campaign Manager** — mỗi chiến dịch có niche, style prompt, nguồn keyword, AI engine, platform đích, giá, cron. Chế độ `semi` (chờ bạn duyệt) hoặc `full` (đăng tự động).
-- **Dashboard tiếng Việt** — Next.js 14 + Tailwind, tối ưu UX.
-- **Docker Compose** — `docker compose up -d` là xong.
+| Platform | Vì sao chọn |
+|---|---|
+| **Printify** | Free, API tốt nhất, mockup miễn phí, auto-sync sang Etsy/Shopify/eBay |
+| **Printful** | Chất lượng cao cấp, fulfillment nhanh, API ổn định |
+| **Etsy** | 95M người mua/tháng, OAuth 2.0 chính chủ |
 
-## 🧱 Kiến trúc
+❌ Bỏ Redbubble / Teespring / Merch by Amazon vì **không có public API** — Selenium dễ bị ban,
+DOM thay đổi liên tục, ROI thấp.
 
-| Layer        | Tech                                          |
-|--------------|-----------------------------------------------|
-| Frontend     | Next.js 14, Tailwind, TypeScript, shadcn-ish UI |
-| Backend API  | FastAPI (Python 3.12) + SQLAlchemy 2 + Alembic |
-| Worker       | Celery + Redis, Celery Beat (cron scheduler)   |
-| DB           | PostgreSQL 16                                  |
-| Cache/queue  | Redis 7                                        |
-| Storage      | Volume `media/` (designs, mockups)             |
-
-## 🚀 Chạy nhanh (Docker Compose)
+## 🚀 Quickstart 15 phút
 
 ```bash
-git clone <repo> pod-bot && cd pod-bot
+git clone https://github.com/whitelotus-web/pod-bot.git && cd pod-bot
 cp .env.example .env
-# Mở .env điền GEMINI_API_KEY (hoặc OPENAI/REPLICATE) + PRINTIFY_API_KEY, …
+# Mở .env, điền tối thiểu:
+#   GEMINI_API_KEY=...        (https://aistudio.google.com/apikey)
+#   PRINTIFY_API_KEY=...      (https://printify.com/app/account/api)
 docker compose up -d --build
 ```
 
-Các endpoint:
+| Service | URL |
+|---|---|
+| Dashboard | http://localhost:3000 |
+| API + Swagger | http://localhost:8000/docs |
+| Postgres | `localhost:5432` (`podbot` / `podbot`) |
+| Redis | `localhost:6379` |
 
-| Service     | URL                                       |
-|-------------|-------------------------------------------|
-| Dashboard   | http://localhost:3000                     |
-| API         | http://localhost:8000                     |
-| Swagger     | http://localhost:8000/docs                |
-| Postgres    | `localhost:5432` (user/pass: `podbot`)    |
-| Redis       | `localhost:6379`                          |
+Đăng nhập admin: `admin@podbot.local` / `admin123` (đổi trong `.env`).
 
-Tài khoản admin mặc định: `admin@podbot.local` / `admin123` (đổi trong `.env`).
+## 🔑 Kết nối Printify (hướng dẫn từng bước)
 
-## 🔑 Kết nối tài khoản platform
+1. Vào https://printify.com/app/account/api → **Create new token** (chọn scope full).
+2. Vào https://printify.com/app/store → copy **Shop ID** (số trong URL).
+3. Trong dashboard POD Bot, mở `/platforms` → form **Thêm tài khoản mới**:
+   - Platform: `Printify`
+   - API key: token vừa tạo
+   - Shop ID: số shop
+4. Bấm **Test** — phải hiện ✅ Kết nối OK.
+5. (Khuyến nghị) Vào Printify dashboard → **Add new sales channel** → kết nối Etsy shop.
+   Từ giờ mỗi sản phẩm bot tạo trên Printify sẽ tự động xuất hiện trên Etsy.
 
-Vào `/platforms` trong dashboard rồi chọn:
+## 🧠 Tạo chiến dịch đầu tiên
 
-### Printify
-1. Lấy API key tại https://printify.com/app/account/api
-2. Dán vào `api_key`; điền `shop_id` (xem `/v1/shops.json`).
-3. Bấm **Test** để xác minh.
+1. `/campaigns/new`:
+   - **Tên**: `Cat lovers vintage tee`
+   - **Niche**: `cat lovers`
+   - **Style prompt**: `vintage retro cartoon, bold outline, 4 color palette`
+   - **Nguồn keyword**: Google Trends + Etsy
+   - **AI engine**: Gemini
+   - **Số design / keyword**: 2
+   - **Platform**: Printify
+   - **Chế độ**: `semi` (an toàn — duyệt rồi mới đăng)
+2. Bấm **Tạo** → bấm ▶ để chạy ngay.
+3. Pipeline mất ~2-3 phút (tuỳ AI quota).
+4. Vào `/designs` để xem ảnh & mockup; vào `/products` để xem sản phẩm đã đăng.
 
-### Printful
-1. Tạo API key tại https://developers.printful.com/
-2. Dán vào `api_key`. Bấm **Test**.
+Khi đã tin tưởng pipeline, đổi `auto_mode` sang `full` và đặt cron `0 3 * * *` — bot tự đăng
+mỗi sáng 3h.
 
-### Etsy (OAuth 2.0)
-1. Đăng ký app tại https://www.etsy.com/developers/your-apps
-2. Điền `ETSY_CLIENT_ID`, `ETSY_CLIENT_SECRET` vào `.env`.
-3. Trong dashboard, chọn **Etsy** rồi bấm **Kết nối Etsy qua OAuth →**.
+## 🧱 Stack
 
-### Redbubble / Teespring / Merch by Amazon
-Các platform này **không có public API**. Adapter đi kèm là skeleton Selenium/Playwright. Để kích hoạt:
+| Layer | Tech |
+|---|---|
+| Frontend | Next.js 14 · TypeScript · Tailwind · shadcn-style UI |
+| Backend | FastAPI 0.110 · SQLAlchemy 2 · Alembic · Pydantic 2 |
+| Worker | Celery 5 · Redis 7 · Celery Beat |
+| DB | PostgreSQL 16 |
+| AI | google-genai · openai · replicate (plug-in qua factory) |
+| Deploy | Docker Compose (6 services) |
 
-1. `pip install playwright && playwright install chromium`
-2. Đăng nhập bằng browser profile riêng, export cookies thành JSON.
-3. Lưu cookies vào `PlatformAccount.extra["cookies"]` (hiện đang để placeholder trong code — xem `backend/app/services/platforms/redbubble.py`).
+## 🧩 Mở rộng
 
-⚠️ Tự động upload lên các platform này có thể vi phạm ToS. Dùng có trách nhiệm.
+**Thêm nguồn keyword**: tạo class kế thừa `KeywordSource` trong
+`backend/app/services/keywords/` → đăng ký vào `SOURCE_REGISTRY`.
 
-## 🧠 Tạo chiến dịch
+**Thêm AI engine**: tạo class kế thừa `AIDesignEngine` trong
+`backend/app/services/ai/` → đăng ký vào `get_engine()`.
 
-1. Vào `/campaigns/new`.
-2. Nhập niche (vd: `cat lovers`), style prompt, chọn nguồn keyword.
-3. Chọn AI engine + số design / keyword.
-4. Chọn platform đích + chế độ `semi` / `full`.
-5. (tuỳ chọn) nhập cron `0 3 * * *` — mỗi 3h sáng chạy.
-6. Bấm **Tạo**, rồi bấm ▶ để chạy ngay.
+**Thêm platform POD**: tạo class kế thừa `PODPlatform` trong
+`backend/app/services/platforms/` → đăng ký vào `base.get_platform()` + `PLATFORM_META`.
 
-## 🧩 Thêm nguồn keyword / platform mới
-
-**Thêm nguồn keyword**: tạo class kế thừa `KeywordSource` trong `backend/app/services/keywords/` rồi đăng ký vào `aggregator.SOURCE_REGISTRY`.
-
-**Thêm platform**: tạo class kế thừa `PODPlatform` trong `backend/app/services/platforms/` rồi đăng ký vào `base.get_platform()` + `PLATFORM_META`.
-
-Adapter pattern → thêm mới không cần sửa core pipeline.
+Tất cả là plugin thuần — không cần sửa core pipeline.
 
 ## 🛠️ Lệnh hữu ích
 
 ```bash
-# Tail logs
-docker compose logs -f backend worker
-
-# Re-run migrations
+docker compose logs -f backend worker          # tail logs
 docker compose exec backend alembic upgrade head
-
-# Vào shell Python của backend
-docker compose exec backend python
-
-# Chạy pipeline ngay (không chờ cron) bằng API
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8000/api/v1/campaigns/1/run?force_auto=true"
+docker compose exec backend pytest             # smoke tests
+docker compose exec backend ruff check .       # lint
+docker compose exec frontend npm run lint
+docker compose exec frontend npm run build
 ```
 
-## 🗂️ Cấu trúc repo
+Chạy thủ công 1 chiến dịch (không chờ cron):
 
-```
-pod-bot/
-├── docker-compose.yml
-├── .env.example
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI entry + admin seeder
-│   │   ├── core/                # settings, db, security
-│   │   ├── models/              # SQLAlchemy models
-│   │   ├── schemas/             # Pydantic schemas
-│   │   ├── api/v1/              # REST endpoints
-│   │   ├── services/
-│   │   │   ├── keywords/        # Google Trends, Etsy, Amazon, Pinterest, TikTok + aggregator
-│   │   │   ├── ai/              # Gemini, OpenAI, Replicate
-│   │   │   ├── mockup/          # Pillow compositor
-│   │   │   └── platforms/       # Printify, Printful, Etsy, Redbubble, Teespring, Merch Amazon
-│   │   └── workers/             # Celery app + pipeline task + beat scheduler
-│   ├── alembic/                 # DB migrations
-│   ├── Dockerfile
-│   └── pyproject.toml
-├── frontend/
-│   ├── app/                     # Next.js 14 App Router (tiếng Việt)
-│   │   ├── login/
-│   │   └── (app)/
-│   │       ├── dashboard/
-│   │       ├── campaigns/ (+ new)
-│   │       ├── keywords/
-│   │       ├── designs/
-│   │       ├── products/
-│   │       ├── platforms/
-│   │       ├── runs/
-│   │       └── settings/
-│   ├── components/Sidebar.tsx
-│   ├── lib/api.ts
-│   └── Dockerfile
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@podbot.local","password":"admin123"}' | jq -r .access_token)
+
+curl -X POST http://localhost:8000/v1/campaigns/1/run \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-## 🔒 Ghi chú bảo mật & ToS
+## 🔒 Bảo mật
 
-- Không commit `.env` lên repo (đã gitignore).
-- Scraping Etsy / Amazon có thể vi phạm ToS — rate-limit hoặc dùng proxy.
-- Credentials platform được lưu plaintext trong DB — trong production, encrypt thêm bằng `cryptography.fernet` với key trong KMS.
-- Chỉ đăng upload design bạn có bản quyền (tránh DMCA).
+- Không commit `.env` (đã có trong `.gitignore`).
+- API key được mã hoá ở rest qua Postgres user (đổi password mặc định khi deploy).
+- Mỗi platform account scope theo `user_id` — không chia sẻ giữa users.
 
-## 📜 License
+## 📋 Roadmap gợi ý
 
-MIT — tự do thương mại hoá.
+- [ ] Plug-in Pinterest API (Trial program)
+- [ ] AI quality filter — auto reject design xấu trước khi publish
+- [ ] A/B test nhiều style prompt cùng 1 keyword
+- [ ] Webhook nhận đơn hàng từ Printify → tự kích hoạt re-design
+- [ ] Multi-tenant (mỗi user 1 isolated workspace)
+
+## 📝 Giấy phép
+
+MIT — dùng tự do, fork tự do.

@@ -1,10 +1,19 @@
-"""Printify adapter.
+"""Printify adapter — core POD platform.
 
-Docs: https://developers.printify.com/#introduction
-Flow:
-  1. POST /v1/uploads/images.json  → image_id
-  2. POST /v1/shops/{shop_id}/products.json  (blueprint_id + print_provider_id + variants)
-  3. POST /v1/shops/{shop_id}/products/{product_id}/publish.json
+Docs: https://developers.printify.com/
+
+Why Printify is the recommended core:
+  * Free, no monthly fee, no per-product fee
+  * Has a built-in **mockup generator** (returns photorealistic shirt images)
+  * 800+ blueprints across 90+ print providers — pricing is transparent
+  * Auto-syncs created products to connected sales channels (Etsy, Shopify,
+    eBay, Walmart, TikTok Shop) so the bot only needs to publish once.
+
+Flow used by the pipeline:
+  1. POST /v1/uploads/images.json            → image_id
+  2. POST /v1/shops/{shop}/products.json     → product_id (mockups generated)
+  3. GET  /v1/shops/{shop}/products/{id}.json → preview images
+  4. POST /v1/shops/{shop}/products/{id}/publish.json
 """
 from __future__ import annotations
 
@@ -53,7 +62,8 @@ class PrintifyPlatform(PODPlatform):
             logger.warning("Printify ping failed: %s", exc)
             return False
 
-    def _upload_image(self, design_path: str) -> str:
+    def upload_image(self, design_path: str) -> str:
+        """Upload a design and return the Printify image ID."""
         with open(design_path, "rb") as f:
             encoded = base64.b64encode(f.read()).decode()
         r = self.client.post(
@@ -70,6 +80,16 @@ class PrintifyPlatform(PODPlatform):
         r.raise_for_status()
         return [v["id"] for v in r.json().get("variants", [])[:limit]]
 
+    def fetch_mockups(self, product_id: str) -> list[str]:
+        """Return URLs of Printify-generated mockup images for a product."""
+        try:
+            r = self.client.get(f"/shops/{self.account.shop_id}/products/{product_id}.json")
+            r.raise_for_status()
+            return [img["src"] for img in r.json().get("images", [])]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Fetch mockups failed: %s", exc)
+            return []
+
     def publish(
         self,
         *,
@@ -85,7 +105,7 @@ class PrintifyPlatform(PODPlatform):
             blueprint_id = int(extra.get("blueprint_id", DEFAULT_TSHIRT_BLUEPRINT))
             provider_id = int(extra.get("print_provider_id", DEFAULT_PRINT_PROVIDER))
 
-            image_id = self._upload_image(design_path)
+            image_id = self.upload_image(design_path)
             variant_ids = self._get_variants(blueprint_id, provider_id)
             if not variant_ids:
                 return PublishResult(status="failed", error="Không tìm thấy variants")
@@ -125,7 +145,7 @@ class PrintifyPlatform(PODPlatform):
             product = r.json()
             product_id = product["id"]
 
-            # Publish
+            # Publish to all connected sales channels (Etsy, Shopify, etc.)
             self.client.post(
                 f"/shops/{self.account.shop_id}/products/{product_id}/publish.json",
                 json={
@@ -145,6 +165,9 @@ class PrintifyPlatform(PODPlatform):
                 raw=product,
             )
         except httpx.HTTPStatusError as exc:
-            return PublishResult(status="failed", error=f"{exc.response.status_code}: {exc.response.text[:500]}")
+            return PublishResult(
+                status="failed",
+                error=f"{exc.response.status_code}: {exc.response.text[:500]}",
+            )
         except Exception as exc:  # noqa: BLE001
             return PublishResult(status="failed", error=str(exc))

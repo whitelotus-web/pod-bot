@@ -53,11 +53,23 @@ def run_campaign(self, campaign_id: int, force_auto: bool | None = None) -> dict
             design_log = _log(db, campaign_id, "design", "running")
             created_designs: list[Design] = []
             top_terms = terms[: max(1, campaign.designs_per_keyword)]
+            # Reuse a Printify account (if any) for mockup generation — its
+            # mockups are far more polished than the local Pillow fallback.
+            printify_account = (
+                db.query(PlatformAccount)
+                .filter_by(user_id=campaign.user_id, platform="printify", is_active=True)
+                .first()
+            )
             for kw in top_terms:
                 try:
                     designs = _generate_designs(db, campaign, kw)
                     for d in designs:
-                        _render_mockups(db, d, campaign.product_types or ["tshirt"])
+                        _render_mockups(
+                            db,
+                            d,
+                            campaign.product_types or ["tshirt"],
+                            printify_account=printify_account,
+                        )
                         created_designs.append(d)
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("design generation failed for %s: %s", kw.term, exc)
@@ -162,7 +174,20 @@ def _generate_designs(db, campaign: Campaign, keyword: Keyword) -> list[Design]:
     return out
 
 
-def _render_mockups(db, design: Design, product_types: list[str]) -> None:
+def _render_mockups(
+    db,
+    design: Design,
+    product_types: list[str],
+    printify_account: PlatformAccount | None = None,
+) -> None:
+    """Render mockups for a design.
+
+    Strategy:
+      1. If a Printify account is connected, the publish stage will already
+         produce photorealistic mockups — we still keep a local Pillow render
+         as a quick preview for the dashboard (no extra API quota).
+      2. Otherwise, Pillow renders are the only preview available.
+    """
     mocker = PillowMockup()
     design_abs = Path(settings.media_root) / design.file_path
     for ptype in product_types:
@@ -179,6 +204,7 @@ def _render_mockups(db, design: Design, product_types: list[str]) -> None:
                 product_type=ptype,
                 template=template,
                 file_path=str(rel),
+                source="printify" if printify_account else "pillow",
             )
             db.add(m)
         except Exception as exc:  # noqa: BLE001

@@ -7,14 +7,16 @@ class CampaignBase(BaseModel):
     name: str
     niche: str = ""
     style_prompt: str = ""
-    keyword_sources: list[str] = Field(default_factory=list)
+    # Default to the most reliable free sources
+    keyword_sources: list[str] = Field(default_factory=lambda: ["google_trends", "etsy"])
     ai_engine: str = "gemini"
     ai_model: str | None = None
     designs_per_keyword: int = 2
     product_types: list[str] = Field(default_factory=lambda: ["tshirt"])
     base_price_usd: float = 19.99
     auto_mode: str = "semi"
-    target_platforms: list[str] = Field(default_factory=list)
+    # Default: Printify is core (auto-syncs to Etsy if shop is connected)
+    target_platforms: list[str] = Field(default_factory=lambda: ["printify"])
     schedule_cron: str | None = None
     is_active: bool = True
 

@@ -7,6 +7,7 @@ Create Date: 2025-04-27 00:00:00
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0001_init"
@@ -103,6 +104,7 @@ def upgrade() -> None:
         sa.Column("product_type", sa.String(64), nullable=False),
         sa.Column("template", sa.String(128), server_default="tshirt_white"),
         sa.Column("file_path", sa.String(512), nullable=False),
+        sa.Column("source", sa.String(32), server_default="pillow"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 

@@ -13,12 +13,9 @@ const ALL_KEYWORD_SOURCES = [
 ];
 
 const ALL_PLATFORMS = [
-  { id: "printify", label: "Printify", ok: true },
-  { id: "printful", label: "Printful", ok: true },
-  { id: "etsy", label: "Etsy", ok: true },
-  { id: "redbubble", label: "Redbubble (Selenium)", ok: false },
-  { id: "teespring", label: "Teespring / Spring (Selenium)", ok: false },
-  { id: "merch_amazon", label: "Merch by Amazon (Selenium)", ok: false },
+  { id: "printify", label: "Printify", tagline: "Core — rẻ nhất, mockup miễn phí" },
+  { id: "printful", label: "Printful", tagline: "Premium — chất lượng cao" },
+  { id: "etsy", label: "Etsy", tagline: "Marketplace — 95M người mua/tháng" },
 ];
 
 export default function NewCampaignPage() {
@@ -115,15 +112,19 @@ export default function NewCampaignPage() {
 
         <div>
           <label className="label">Platform đăng bán</label>
-          <div className="flex flex-wrap gap-2">
+          <p className="mb-2 text-xs text-slate-500">
+            💡 Khuyến nghị: chọn <b>Printify</b> + kết nối Etsy shop trong Printify dashboard →
+            sản phẩm sẽ tự đồng bộ sang Etsy sau khi bot đăng.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
             {ALL_PLATFORMS.map((p) => {
               const on = form.target_platforms.includes(p.id);
               return (
                 <button key={p.id} type="button"
-                  title={p.ok ? "Có API chính thức" : "Chưa có public API — cần Selenium"}
                   onClick={() => toggle("target_platforms", p.id)}
-                  className={`rounded-full px-3 py-1 text-sm ${on ? "bg-brand-500 text-white" : p.ok ? "bg-slate-100 text-slate-700" : "bg-amber-50 text-amber-700"}`}>
-                  {p.label}
+                  className={`rounded-lg p-3 text-left text-sm transition ${on ? "bg-brand-500 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}>
+                  <div className="font-semibold">{p.label}</div>
+                  <div className={`text-xs ${on ? "text-white/80" : "text-slate-500"}`}>{p.tagline}</div>
                 </button>
               );
             })}

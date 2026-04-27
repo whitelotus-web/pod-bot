@@ -36,17 +36,24 @@ def test_mockup_templates():
     assert "tshirt_black" in templates
 
 
-def test_platform_meta_covers_all():
+def test_platform_meta_covers_first_class():
     from app.services.platforms import PLATFORM_META
 
-    assert set(PLATFORM_META.keys()) >= {
-        "printify",
-        "printful",
-        "etsy",
-        "redbubble",
-        "teespring",
-        "merch_amazon",
-    }
+    # Only the 3 API-backed platforms are supported; Selenium-only platforms
+    # (Redbubble / Teespring / Merch by Amazon) are intentionally excluded.
+    assert set(PLATFORM_META.keys()) == {"printify", "printful", "etsy"}
+    for meta in PLATFORM_META.values():
+        assert meta["supported"] is True
+
+
+def test_platform_factory_rejects_legacy():
+    import pytest
+
+    from app.services.platforms import get_platform
+
+    for legacy in ("redbubble", "teespring", "merch_amazon"):
+        with pytest.raises(ValueError, match="Unknown platform"):
+            get_platform(legacy, account=None)
 
 
 def test_celery_tasks_registered():

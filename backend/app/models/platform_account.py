@@ -13,7 +13,7 @@ class PlatformAccount(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
 
-    # "printify" | "printful" | "etsy" | "redbubble" | "teespring" | "merch_amazon"
+    # First-class API-backed platforms: "printify" | "printful" | "etsy"
     platform: Mapped[str] = mapped_column(String(64), index=True)
     label: Mapped[str] = mapped_column(String(255), default="")
 
