@@ -9,7 +9,7 @@ type Notification = {
   title: string;
   body: string | null;
   payload: Record<string, unknown> | null;
-  read_at: string | null;
+  read: boolean;
   created_at: string;
 };
 
@@ -89,7 +89,7 @@ export default function NotificationsPage() {
           <li
             key={n.id}
             className={`flex items-start justify-between gap-4 p-4 ${
-              !n.read_at ? "bg-slate-50/50 dark:bg-slate-800/30" : ""
+              !n.read ? "bg-slate-50/50 dark:bg-slate-800/30" : ""
             }`}
           >
             <div className="flex-1">
@@ -102,7 +102,7 @@ export default function NotificationsPage() {
                   {n.severity}
                 </span>
                 <span className="text-xs text-slate-400">{n.kind}</span>
-                {!n.read_at && (
+                {!n.read && (
                   <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
                     NEW
                   </span>
@@ -118,7 +118,7 @@ export default function NotificationsPage() {
                 {new Date(n.created_at).toLocaleString()}
               </p>
             </div>
-            {!n.read_at && (
+            {!n.read && (
               <button
                 onClick={() => markRead(n.id)}
                 className="text-xs text-brand-600 hover:underline"

@@ -52,12 +52,11 @@ def lifecycle_audit() -> dict:
     never silently delist. The user reviews and confirms in the UI.
     """
     from app.models import Notification, Product
-    from app.services.lifecycle import LifecycleConfig, evaluate_product
+    from app.services.lifecycle import LifecycleThresholds, evaluate_product
 
-    cfg = LifecycleConfig()
+    thresholds = LifecycleThresholds()
     db = SessionLocal()
     try:
-        now = datetime.now(UTC)
         products = (
             db.query(Product).filter(Product.status == "published").all()
         )
@@ -66,19 +65,19 @@ def lifecycle_audit() -> dict:
         for p in products:
             if not p.published_at:
                 continue
-            age_days = (now - p.published_at).days
             decision = evaluate_product(
-                age_days=age_days,
+                published_at=p.published_at,
                 views=p.views_count or 0,
-                ctr=float(p.ctr or 0.0),
+                clicks=p.clicks_count or 0,
                 orders=p.orders_count or 0,
+                ctr=float(p.ctr or 0.0),
                 revenue_usd=float(p.revenue_usd or 0.0),
-                cfg=cfg,
+                thresholds=thresholds,
             )
-            if decision.recommend_cut:
+            if decision.kind == "cut":
                 recommended_cut += 1
                 p.lifecycle_stage = "cut_loss_recommended"
-            elif decision.recommend_duplicate:
+            elif decision.kind == "winner":
                 recommended_dup += 1
                 p.lifecycle_stage = "winner"
 

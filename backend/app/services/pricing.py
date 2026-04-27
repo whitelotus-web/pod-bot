@@ -137,7 +137,7 @@ def evaluate_rule(
                 new_price_usd=round(new_price, 2),
                 rule_id=rule.id,
                 rule_name=rule.name,
-                reason=f"high views {views} + CTR {ctr:.1%} → -{discount_pct:.0f}% test",
+                reason=f"high views {views} + CTR {(ctr or 0):.1%} → -{discount_pct:.0f}% test",
             )
         return None
 
