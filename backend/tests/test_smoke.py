@@ -62,3 +62,31 @@ def test_celery_tasks_registered():
 
     assert "app.workers.pipeline.run_campaign" in celery_app.tasks
     assert "app.workers.scheduler.tick" in celery_app.tasks
+
+
+def test_crypto_roundtrip():
+    from app.core.crypto import decrypt, encrypt, mask
+
+    token = encrypt("sk-test-1234567890")
+    assert token != "sk-test-1234567890"
+    assert decrypt(token) == "sk-test-1234567890"
+    assert mask("sk-test-1234567890") == "sk-t••••••7890"
+
+
+def test_prompt_templates_library():
+    from app.services.prompts import TEMPLATES, TEMPLATES_BY_ID, compose_preview
+
+    assert len(TEMPLATES) >= 5
+    ids = {t.id for t in TEMPLATES}
+    assert len(ids) == len(TEMPLATES)  # unique ids
+    assert "vintage_retro" in TEMPLATES_BY_ID
+    final = compose_preview("cat lovers", niche="cats", style=TEMPLATES[0].style)
+    assert "cat lovers" in final
+    assert "vintage" in final.lower()
+
+
+def test_engine_accepts_override_key():
+    from app.services.ai import get_engine
+
+    eng = get_engine("gemini", api_key="fake")
+    assert eng.api_key_override == "fake"

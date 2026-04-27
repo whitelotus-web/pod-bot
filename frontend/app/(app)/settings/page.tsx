@@ -22,10 +22,19 @@ export default function SettingsPage() {
       </div>
       <div className="card p-5">
         <h2 className="mb-3 text-lg font-semibold">Cấu hình hệ thống</h2>
-        <p className="text-sm text-slate-600">
-          Các API key (Gemini, OpenAI, Printify, v.v.) được đặt qua file <code>.env</code>
-          rồi restart Docker Compose. Xem README để biết chi tiết.
-        </p>
+        <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+          <li>
+            🔑 <a href="/settings/ai" className="text-brand-600 hover:underline dark:text-brand-400">Quản lý AI keys</a> —
+            paste Gemini / OpenAI / Replicate key qua UI (không cần sửa <code>.env</code>).
+          </li>
+          <li>
+            🔌 <a href="/platforms" className="text-brand-600 hover:underline dark:text-brand-400">Kết nối platform POD</a> —
+            Printify / Printful / Etsy.
+          </li>
+          <li>
+            ⚙️ Các biến hệ thống còn lại (DB URL, secret key, v.v.) vẫn nằm trong <code>.env</code>.
+          </li>
+        </ul>
       </div>
     </div>
   );

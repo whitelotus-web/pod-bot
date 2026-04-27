@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type Campaign, type Product, type RunLog } from "@/lib/api";
+import { Onboarding } from "@/components/Onboarding";
 
 export default function DashboardPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -26,6 +27,7 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <Link href="/campaigns/new" className="btn-primary">+ Chiến dịch mới</Link>
       </div>
+      <Onboarding />
       <div className="grid gap-4 sm:grid-cols-4">
         <Stat label="Chiến dịch" value={campaigns.length} />
         <Stat label="Đang chạy" value={campaigns.filter(c => c.is_active).length} />

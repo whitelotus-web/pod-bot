@@ -16,8 +16,12 @@ class OpenAIDalleEngine(AIDesignEngine):
     name = "openai"
     default_model = "gpt-image-1"
 
+    def _key(self) -> str | None:
+        return self.api_key_override or settings.openai_api_key
+
     def generate(self, prompt: str, model: str | None = None, size: str = "1024x1024") -> GeneratedImage:
-        if not settings.openai_api_key:
+        key = self._key()
+        if not key:
             raise RuntimeError("OPENAI_API_KEY chưa được cấu hình")
 
         try:
@@ -25,7 +29,7 @@ class OpenAIDalleEngine(AIDesignEngine):
         except ImportError as exc:
             raise RuntimeError("Cần cài openai: pip install openai") from exc
 
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = OpenAI(api_key=key)
         model_id = model or self.default_model
 
         resp = client.images.generate(
@@ -47,3 +51,15 @@ class OpenAIDalleEngine(AIDesignEngine):
             r.raise_for_status()
             return GeneratedImage(image_bytes=r.content, prompt=prompt, model=model_id)
         raise RuntimeError(f"OpenAI không trả về ảnh. Resp: {resp}")
+
+    def test_connection(self) -> tuple[bool, str]:
+        key = self._key()
+        if not key:
+            return False, "Chưa có API key"
+        try:
+            from openai import OpenAI
+
+            OpenAI(api_key=key).models.list()
+            return True, "OK"
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)[:300]

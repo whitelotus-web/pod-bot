@@ -10,7 +10,7 @@ from slugify import slugify
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Campaign, Design, Keyword, Mockup, PlatformAccount, Product, RunLog
-from app.services.ai import get_engine
+from app.services.ai.base import get_engine_for_user
 from app.services.keywords import KeywordAggregator
 from app.services.mockup import PillowMockup
 from app.services.platforms import get_platform
@@ -140,7 +140,7 @@ def _fetch_keywords(db, campaign: Campaign) -> list[Keyword]:
 
 
 def _generate_designs(db, campaign: Campaign, keyword: Keyword) -> list[Design]:
-    engine = get_engine(campaign.ai_engine)
+    engine = get_engine_for_user(campaign.ai_engine, campaign.user_id, db)
     base_prompt = engine.design_prompt(
         keyword.term, niche=campaign.niche, style=campaign.style_prompt
     )
