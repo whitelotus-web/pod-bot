@@ -36,6 +36,15 @@ class Campaign(Base):
     target_account_ids: Mapped[list] = mapped_column(JSON, default=list)
     seo_auto: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Quality / risk gates
+    quality_gates_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    vision_qa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    trademark_check_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    uspto_check_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Prompt template ids — empty list = let pipeline pick by family round-robin
+    prompt_template_ids: Mapped[list] = mapped_column(JSON, default=list)
+
     # --- Schedule ---
     schedule_cron: Mapped[str | None] = mapped_column(String(64), nullable=True)  # "0 3 * * *"
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
