@@ -12,6 +12,12 @@ class PlatformAccountBase(BaseModel):
     extra: dict[str, Any] | None = None
     is_active: bool = True
 
+    # Optional fingerprint + warmup overrides at creation
+    proxy_url: str | None = None
+    user_agent: str | None = None
+    account_age_days_override: int | None = None
+    daily_publish_cap_override: int | None = None
+
 
 class PlatformAccountCreate(PlatformAccountBase):
     pass
@@ -23,6 +29,10 @@ class PlatformAccountUpdate(BaseModel):
     shop_id: str | None = None
     extra: dict[str, Any] | None = None
     is_active: bool | None = None
+    proxy_url: str | None = None
+    user_agent: str | None = None
+    account_age_days_override: int | None = None
+    daily_publish_cap_override: int | None = None
 
 
 class PlatformAccountRead(BaseModel):
@@ -34,5 +44,10 @@ class PlatformAccountRead(BaseModel):
     shop_id: str | None
     has_credentials: bool = False
     is_active: bool
+    proxy_url: str | None = None
+    user_agent: str | None = None
+    account_age_days_override: int | None = None
+    daily_publish_cap_override: int | None = None
+    health_status: str | None = "healthy"
     created_at: datetime
     updated_at: datetime

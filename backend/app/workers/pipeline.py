@@ -14,14 +14,27 @@ from slugify import slugify
 
 from app.core.config import settings
 from app.core.db import SessionLocal
-from app.models import Campaign, Design, Keyword, Mockup, PlatformAccount, Product, RunLog
+from app.models import (
+    Campaign,
+    Design,
+    Keyword,
+    Mockup,
+    PlatformAccount,
+    Product,
+    RunLog,
+    TrademarkTerm,
+)
 from app.services.ai_router import safe_generate_image
 from app.services.bg_remove import remove_background
 from app.services.catalog import get_blueprint
 from app.services.keywords import KeywordAggregator
 from app.services.mockup import PillowMockup
+from app.services.notifications import dispatch as notify
 from app.services.platforms import get_platform
+from app.services.quality import evaluate_design
 from app.services.seo import generate_seo
+from app.services.trademark import filter_keywords
+from app.services.warmup import decide_publish
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -48,6 +61,8 @@ def run_campaign(self, campaign_id: int, force_auto: bool | None = None) -> dict
 
             kw_log = _log(db, campaign_id, "keywords", "running")
             terms = _fetch_keywords(db, campaign)
+            if campaign.trademark_check_enabled:
+                terms = _trademark_filter(db, campaign, terms)
             kw_log.status = "success"
             kw_log.finished_at = datetime.now(UTC)
             kw_log.data = {"count": len(terms)}
@@ -61,6 +76,8 @@ def run_campaign(self, campaign_id: int, force_auto: bool | None = None) -> dict
                     designs = _generate_designs(db, campaign, kw)
                     for d in designs:
                         _ensure_transparent(db, d)
+                        if campaign.quality_gates_enabled and not _quality_gate(db, campaign, d):
+                            continue
                         _render_mockups(db, d, campaign.product_types or ["tshirt_unisex"])
                         created_designs.append(d)
                 except Exception as exc:  # noqa: BLE001
@@ -105,6 +122,57 @@ def _log(db, campaign_id: int, stage: str, status: str) -> RunLog:
     db.commit()
     db.refresh(row)
     return row
+
+
+def _trademark_filter(db, campaign: Campaign, terms: list[Keyword]) -> list[Keyword]:
+    """Drop trademarked terms; mark them in DB and notify."""
+    user_terms = [
+        t.term
+        for t in db.query(TrademarkTerm).filter(TrademarkTerm.user_id == campaign.user_id).all()
+    ]
+    safe_strings, rejected = filter_keywords(
+        [t.term for t in terms],
+        user_blacklist=user_terms,
+        enable_uspto=campaign.uspto_check_enabled,
+    )
+    safe_set = set(safe_strings)
+    kept: list[Keyword] = []
+    for kw in terms:
+        if kw.term in safe_set:
+            kept.append(kw)
+        else:
+            reason = next((r for k, r in rejected if k == kw.term), "trademark")
+            kw.rejected_reason = reason[:512]
+            try:
+                notify(
+                    db,
+                    user_id=campaign.user_id,
+                    kind="trademark_hit",
+                    payload={"phrase": kw.term, "reason": reason},
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("notify trademark_hit failed: %s", exc)
+    db.commit()
+    return kept
+
+
+def _quality_gate(db, campaign: Campaign, design: Design) -> bool:
+    """Run design-time quality gates. Returns True if design passes."""
+    rel = design.bg_removed_path or design.file_path
+    abs_path = Path(settings.media_root) / rel
+    if not abs_path.exists():
+        return True
+    keyword = design.keyword.term if design.keyword else design.title
+    report = evaluate_design(str(abs_path), expected_keyword=keyword)
+    design.quality_score = report.overall_score
+    design.quality_report = report.to_dict()
+    if report.rejected:
+        design.status = "rejected"
+        design.rejection_reason = report.rejection_reason
+        db.commit()
+        return False
+    db.commit()
+    return True
 
 
 def _fetch_keywords(db, campaign: Campaign) -> list[Keyword]:
@@ -267,6 +335,36 @@ def _publish_all(db, campaign: Campaign, designs: list[Design]) -> int:
 
 
 def _publish_one(db, campaign: Campaign, account, design: Design, product_id: str) -> None:
+    # Warm-up gate: respect daily cap + min spacing per account.
+    decision = decide_publish(
+        created_at=account.created_at,
+        override_age_days=account.account_age_days_override,
+        user_override_cap=account.daily_publish_cap_override,
+        today_published=account.today_publish_count or 0,
+        last_publish_at=account.last_publish_at,
+    )
+    if not decision.allowed:
+        logger.info(
+            "warmup gate blocked publish for account %s: %s", account.id, decision.reason
+        )
+        try:
+            notify(
+                db,
+                user_id=campaign.user_id,
+                kind="warmup_capped",
+                title=f"Warm-up: bỏ qua publish cho account {account.label or account.id}",
+                body=decision.reason,
+                severity="info",
+                payload={
+                    "account_id": account.id,
+                    "today": decision.today_published,
+                    "cap": decision.cap,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("notify warmup failed: %s", exc)
+        return
+
     blueprint = get_blueprint(product_id)
     price = (
         blueprint.suggested_retail_usd
@@ -321,6 +419,8 @@ def _publish_one(db, campaign: Campaign, account, design: Design, product_id: st
                 published_at=datetime.now(UTC) if res.status == "published" else None,
             )
         )
+        if res.status == "published":
+            _bump_warmup_counter(account)
         db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.exception("Publish failed: %s", exc)
@@ -338,3 +438,12 @@ def _publish_one(db, campaign: Campaign, account, design: Design, product_id: st
             )
         )
         db.commit()
+
+
+def _bump_warmup_counter(account: PlatformAccount) -> None:
+    today = datetime.now(UTC).date()
+    if account.today_publish_date != today:
+        account.today_publish_date = today
+        account.today_publish_count = 0
+    account.today_publish_count = (account.today_publish_count or 0) + 1
+    account.last_publish_at = datetime.now(UTC)
