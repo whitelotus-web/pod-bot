@@ -104,11 +104,11 @@ def is_quota_error(exc: BaseException) -> bool:
     msg = str(exc).lower()
     triggers = (
         "quota",
+        "quota_exceeded",
         "rate limit",
         "rate_limit",
         "ratelimit",
         "429",
-        "exceeded",
         "insufficient_quota",
         "billing",
         "resource_exhausted",

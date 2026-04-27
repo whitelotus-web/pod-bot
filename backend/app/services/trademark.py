@@ -118,7 +118,10 @@ def _check_blacklist(
 ) -> TrademarkResult | None:
     """Return a hit (TrademarkResult with safe=False) or None."""
     for phrase in blacklist:
-        p = phrase.lower().strip()
+        # Normalize the blacklist phrase the same way as the input text so that
+        # entries with hyphens / punctuation (e.g. "spider-man", "x-men",
+        # "coca-cola") still match user input regardless of separator.
+        p = _normalize(phrase)
         if not p:
             continue
         # Whole-phrase or word-boundary match for short phrases (1-2 words).
