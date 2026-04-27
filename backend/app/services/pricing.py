@@ -99,7 +99,7 @@ def evaluate_rule(
         ):
             new_price = current_price + rule.delta_usd
             if rule.delta_percent:
-                new_price = current_price * (1 + rule.delta_percent / 100)
+                new_price += current_price * (rule.delta_percent / 100)
             new_price = _clamp(new_price, rule.min_price_usd, rule.max_price_usd)
             if abs(new_price - current_price) < 0.01:
                 return None

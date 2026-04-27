@@ -60,8 +60,8 @@ def lifecycle_audit() -> dict:
         products = (
             db.query(Product).filter(Product.status == "published").all()
         )
-        recommended_cut = 0
-        recommended_dup = 0
+        # Track per-user counts so each notification reflects only that user's products.
+        per_user: dict[int, dict[str, int]] = {}
         for p in products:
             if not p.published_at:
                 continue
@@ -74,31 +74,36 @@ def lifecycle_audit() -> dict:
                 revenue_usd=float(p.revenue_usd or 0.0),
                 thresholds=thresholds,
             )
+            uid = p.design.campaign.user_id if p.design and p.design.campaign else None
             if decision.kind == "cut":
-                recommended_cut += 1
                 p.lifecycle_stage = "cut_loss_recommended"
+                if uid is not None:
+                    per_user.setdefault(uid, {"cut": 0, "duplicate": 0})["cut"] += 1
             elif decision.kind == "winner":
-                recommended_dup += 1
                 p.lifecycle_stage = "winner"
+                if uid is not None:
+                    per_user.setdefault(uid, {"cut": 0, "duplicate": 0})["duplicate"] += 1
 
-        if recommended_cut or recommended_dup:
-            users = {p.design.campaign.user_id for p in products if p.design and p.design.campaign}
-            for uid in users:
-                db.add(
-                    Notification(
-                        user_id=uid,
-                        kind="lifecycle_audit",
-                        severity="info",
-                        title="Lifecycle audit done",
-                        body=(
-                            f"{recommended_cut} sản phẩm gợi ý cut-loss, "
-                            f"{recommended_dup} winner gợi ý nhân bản. Vào /products để xử lý."
-                        ),
-                        payload={"cut": recommended_cut, "duplicate": recommended_dup},
-                    )
+        total_cut = sum(c["cut"] for c in per_user.values())
+        total_dup = sum(c["duplicate"] for c in per_user.values())
+        for uid, counts in per_user.items():
+            if not (counts["cut"] or counts["duplicate"]):
+                continue
+            db.add(
+                Notification(
+                    user_id=uid,
+                    kind="lifecycle_audit",
+                    severity="info",
+                    title="Lifecycle audit done",
+                    body=(
+                        f"{counts['cut']} sản phẩm gợi ý cut-loss, "
+                        f"{counts['duplicate']} winner gợi ý nhân bản. Vào /products để xử lý."
+                    ),
+                    payload={"cut": counts["cut"], "duplicate": counts["duplicate"]},
                 )
+            )
         db.commit()
-        return {"cut": recommended_cut, "duplicate": recommended_dup}
+        return {"cut": total_cut, "duplicate": total_dup}
     finally:
         db.close()
 

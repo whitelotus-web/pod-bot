@@ -81,7 +81,8 @@ def _check_sharpness(image_path: str, min_variance: float = 80.0) -> GateResult:
             if not np.any(mask):
                 return GateResult(name="sharpness", status="fail", reason="fully transparent image")
             gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-            roi = gray[mask]
+            lap = cv2.Laplacian(gray, cv2.CV_64F)
+            roi = lap[mask]
             variance = float(roi.var())
         else:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img

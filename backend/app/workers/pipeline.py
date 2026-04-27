@@ -357,6 +357,11 @@ def _publish_all(db, campaign: Campaign, designs: list[Design]) -> int:
 
 
 def _publish_one(db, campaign: Campaign, account, design: Design, product_id: str) -> None:
+    # Reset stale counter from previous day before checking the warmup gate.
+    today = datetime.now(UTC).date()
+    if account.today_publish_date != today:
+        account.today_publish_date = today
+        account.today_publish_count = 0
     # Warm-up gate: respect daily cap + min spacing per account.
     decision = decide_publish(
         created_at=account.created_at,
