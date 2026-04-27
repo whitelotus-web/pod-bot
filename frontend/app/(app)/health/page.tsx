@@ -3,21 +3,22 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
 type AccountHealth = {
-  account_id: number;
+  id: number;
   platform: string;
   label: string;
+  shop_id: string | null;
+  is_active: boolean;
   health_status: string;
   health_note: string | null;
   paused_until: string | null;
-  proxy_url: string | null;
-  user_agent: string | null;
-  warmup: {
-    age_days: number;
-    cap: number;
-    today: number;
-    remaining: number;
-    cooldown_seconds: number;
-  };
+  age_days: number;
+  tier: string;
+  daily_cap: number;
+  today_publish_count: number;
+  today_remaining: number;
+  last_publish_at: string | null;
+  proxy_configured: boolean;
+  now: string;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -53,24 +54,29 @@ export default function HealthPage() {
 
       {!loading && data.length === 0 && (
         <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">
-          Chưa có platform account nào. Vào trang <a href="/platforms" className="text-brand-600 underline">Platform</a> để thêm shop.
+          Chưa có platform account nào. Vào trang{" "}
+          <a href="/platforms" className="text-brand-600 underline">
+            Platform
+          </a>{" "}
+          để thêm shop.
         </div>
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
         {data.map((a) => {
-          const pct = a.warmup.cap > 0 ? Math.min(100, (a.warmup.today / a.warmup.cap) * 100) : 0;
+          const pct = a.daily_cap > 0 ? Math.min(100, (a.today_publish_count / a.daily_cap) * 100) : 0;
           return (
             <div
-              key={a.account_id}
+              key={a.id}
               className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-semibold">
-                    {a.label || `${a.platform} #${a.account_id}`}
-                  </h3>
-                  <p className="text-xs text-slate-500">{a.platform}</p>
+                  <h3 className="font-semibold">{a.label || `${a.platform} #${a.id}`}</h3>
+                  <p className="text-xs text-slate-500">
+                    {a.platform}
+                    {a.shop_id ? ` · ${a.shop_id}` : ""}
+                  </p>
                 </div>
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -84,28 +90,22 @@ export default function HealthPage() {
               <div className="mt-4">
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>
-                    Hôm nay: {a.warmup.today} / {a.warmup.cap} listing
+                    Hôm nay: {a.today_publish_count} / {a.daily_cap} listing
                   </span>
-                  <span>{a.warmup.age_days}d age</span>
+                  <span>
+                    {a.tier} · {a.age_days}d
+                  </span>
                 </div>
                 <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                  <div
-                    className="h-full bg-brand-500"
-                    style={{ width: `${pct}%` }}
-                  />
+                  <div className="h-full bg-brand-500" style={{ width: `${pct}%` }} />
                 </div>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Còn lại {a.today_remaining} listing được phép trong hôm nay.
+                </p>
               </div>
 
-              {a.warmup.cooldown_seconds > 0 && (
-                <div className="mt-2 text-xs text-amber-600">
-                  ⏳ Cooldown spacing: {a.warmup.cooldown_seconds}s
-                </div>
-              )}
-
               {a.health_note && (
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  💬 {a.health_note}
-                </p>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">💬 {a.health_note}</p>
               )}
               {a.paused_until && (
                 <p className="mt-1 text-xs text-rose-600">
@@ -116,11 +116,11 @@ export default function HealthPage() {
               <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                 <div>
                   <div className="font-medium text-slate-600 dark:text-slate-300">Proxy</div>
-                  <div className="truncate">{a.proxy_url || "—"}</div>
+                  <div>{a.proxy_configured ? "✅ đã cấu hình" : "—"}</div>
                 </div>
                 <div>
-                  <div className="font-medium text-slate-600 dark:text-slate-300">User-Agent</div>
-                  <div className="truncate">{a.user_agent || "auto (per-account hash)"}</div>
+                  <div className="font-medium text-slate-600 dark:text-slate-300">Last publish</div>
+                  <div>{a.last_publish_at ? new Date(a.last_publish_at).toLocaleString() : "—"}</div>
                 </div>
               </div>
             </div>

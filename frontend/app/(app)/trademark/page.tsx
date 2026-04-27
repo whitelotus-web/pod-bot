@@ -44,7 +44,7 @@ export default function TrademarkPage() {
     setLoading(true);
     try {
       const res = await api.post<CheckResult>("/v1/trademark/check", {
-        phrase: phrase.trim(),
+        text: phrase.trim(),
         enable_uspto: enableUspto,
       });
       setCheck(res);
