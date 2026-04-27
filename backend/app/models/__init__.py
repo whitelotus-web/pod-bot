@@ -1,0 +1,21 @@
+"""Import all models here so Alembic sees them."""
+from app.models.campaign import Campaign
+from app.models.design import Design
+from app.models.keyword import Keyword
+from app.models.mockup import Mockup
+from app.models.platform_account import PlatformAccount
+from app.models.product import Product
+from app.models.run_log import RunLog
+from app.models.user import User
+
+__all__ = [
+    "User",
+    "PlatformAccount",
+    "Campaign",
+    "Keyword",
+    "Design",
+    "Mockup",
+    "Product",
+    "RunLog",
+]
+__all_models__ = list(__all__)
