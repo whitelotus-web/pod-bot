@@ -64,6 +64,7 @@ def list_keys(
     user_id: int,
     role: str,
     engine: str | None = None,
+    exclude_engine: str | None = None,
 ) -> list[AIKeyCandidate]:
     """Return ordered list of candidate keys to try for (role, engine)."""
     q = (
@@ -73,6 +74,8 @@ def list_keys(
     )
     if engine:
         q = q.filter(AIKey.engine == engine)
+    if exclude_engine:
+        q = q.filter(AIKey.engine != exclude_engine)
     rows = q.all()
     out: list[AIKeyCandidate] = []
     for r in rows:
@@ -85,6 +88,8 @@ def list_keys(
     used = {c.engine for c in out}
     for eng in ROLE_ENGINES.get(role, []):
         if engine and eng != engine:
+            continue
+        if exclude_engine and eng == exclude_engine:
             continue
         if eng in used:
             continue
@@ -133,13 +138,16 @@ def with_failover(
     role: str,
     engine: str | None,
     fn: Callable[[AIKeyCandidate], T],
+    exclude_engine: str | None = None,
 ) -> T:
     """Run `fn(candidate)` against each candidate until one succeeds.
 
     `fn` must raise on quota/429; we rotate to the next key. Other exceptions
     propagate immediately (we don't burn keys for unrelated bugs).
     """
-    candidates = list_keys(db, user_id=user_id, role=role, engine=engine)
+    candidates = list_keys(
+        db, user_id=user_id, role=role, engine=engine, exclude_engine=exclude_engine
+    )
     if not candidates:
         raise RuntimeError(
             f"Không có AI key nào active cho role={role!r} engine={engine!r}. "
@@ -230,14 +238,23 @@ def safe_generate_image(
         eng = get_engine(cand.engine, api_key=cand.api_key)
         return eng.generate(prompt, model=model, size=size)
 
-    # Try preferred engine first; if all preferred-engine keys exhausted, fall through to others.
+    # Try preferred engine first; if all preferred-engine keys exhausted, fall through
+    # to sibling engines for the role. We pass exclude_engine=engine_pref on the second
+    # call so already-tried preferred-engine keys don't get re-counted in quota_failures.
     try:
         return with_failover(db, user_id=user_id, role="image_generation", engine=engine_pref, fn=_call)
     except RuntimeError as exc:
         if "Đã hết tất cả AI key" not in str(exc) and "Không có AI key" not in str(exc):
             raise
-        logger.info("Engine %s exhausted — fallback to any available image engine.", engine_pref)
-        return with_failover(db, user_id=user_id, role="image_generation", engine=None, fn=_call)
+        logger.info("Engine %s exhausted — fallback to sibling image engines.", engine_pref)
+        return with_failover(
+            db,
+            user_id=user_id,
+            role="image_generation",
+            engine=None,
+            exclude_engine=engine_pref,
+            fn=_call,
+        )
 
 
 def role_engines(role: str) -> Iterable[str]:

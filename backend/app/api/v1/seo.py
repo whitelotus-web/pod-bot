@@ -92,8 +92,8 @@ def patch_product_seo(
     p = db.get(Product, product_id)
     if not p:
         raise HTTPException(404, "Product không tồn tại")
-    # Ownership: through design.campaign.user_id
-    if p.design and p.design.campaign and p.design.campaign.user_id != user.id:
+    # Ownership: through design.campaign.user_id (fail-closed if any link missing)
+    if not p.design or not p.design.campaign or p.design.campaign.user_id != user.id:
         raise HTTPException(403, "Không có quyền")
     if payload.title is not None:
         p.title = payload.title[:255]
