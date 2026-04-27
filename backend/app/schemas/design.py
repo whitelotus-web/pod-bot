@@ -13,6 +13,7 @@ class DesignRead(BaseModel):
     engine: str
     model: str | None
     file_path: str
+    bg_removed_path: str | None = None
     thumbnail_path: str | None
     width: int | None
     height: int | None

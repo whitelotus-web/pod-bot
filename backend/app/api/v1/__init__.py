@@ -4,6 +4,7 @@ from app.api.v1 import (
     ai_keys,
     auth,
     campaigns,
+    catalog,
     designs,
     keywords,
     mockups,
@@ -11,6 +12,7 @@ from app.api.v1 import (
     products,
     prompts,
     runs,
+    seo,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -24,3 +26,5 @@ api_router.include_router(platforms.router, prefix="/platforms", tags=["platform
 api_router.include_router(runs.router, prefix="/runs", tags=["runs"])
 api_router.include_router(ai_keys.router, prefix="/ai-keys", tags=["ai-keys"])
 api_router.include_router(prompts.router, prefix="/prompts", tags=["prompts"])
+api_router.include_router(catalog.router, prefix="/catalog", tags=["catalog"])
+api_router.include_router(seo.router, prefix="/seo", tags=["seo"])

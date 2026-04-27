@@ -23,6 +23,7 @@ class Design(Base):
     model: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     file_path: Mapped[str] = mapped_column(String(512))  # relative to MEDIA_ROOT
+    bg_removed_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     thumbnail_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)

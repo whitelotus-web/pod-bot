@@ -19,6 +19,7 @@ class Product(Base):
 
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    product_type: Mapped[str] = mapped_column(String(64), default="tshirt_unisex")
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[list] = mapped_column(JSON, default=list)

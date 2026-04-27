@@ -16,6 +16,9 @@ export default function PlatformsPage() {
   const [meta, setMeta] = useState<Meta>({});
   const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
   const [form, setForm] = useState({ platform: "printify", label: "", api_key: "", shop_id: "" });
+  const [shopNiche, setShopNiche] = useState("");
+  const [shopNames, setShopNames] = useState<string[]>([]);
+  const [shopBusy, setShopBusy] = useState(false);
 
   async function load() {
     setMeta(await api.get<Meta>("/v1/platforms/meta"));
@@ -36,6 +39,15 @@ export default function PlatformsPage() {
   async function del(id: number) {
     if (!confirm("Xoá account?")) return;
     await api.del(`/v1/platforms/${id}`); load();
+  }
+
+  async function suggestNames() {
+    if (!shopNiche.trim()) { toast.error("Nhập niche"); return; }
+    setShopBusy(true);
+    try {
+      const r = await api.post<{ names: string[] }>("/v1/seo/shop-names", { niche: shopNiche, count: 8 });
+      setShopNames(r.names || []);
+    } catch (e: any) { toast.error(e?.message || "Lỗi"); } finally { setShopBusy(false); }
   }
 
   async function connectEtsy() {
@@ -67,6 +79,32 @@ export default function PlatformsPage() {
             )}
           </div>
         ))}
+      </div>
+
+      <div className="card p-5">
+        <h2 className="mb-2 text-lg font-semibold">🏪 Gợi ý tên shop theo niche</h2>
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          Khuyến nghị: 1 shop = 1 niche. Nhập niche → AI gợi ý tên shop để bạn tạo trên Printify/Etsy.
+        </p>
+        <div className="flex gap-2">
+          <input className="input flex-1" placeholder="vd: cat lovers, plant moms, gym bros"
+            value={shopNiche} onChange={(e) => setShopNiche(e.target.value)} />
+          <button className="btn-outline" onClick={suggestNames} disabled={shopBusy}>
+            {shopBusy ? "..." : "Gợi ý"}
+          </button>
+        </div>
+        {shopNames.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {shopNames.map((n) => (
+              <button key={n} type="button"
+                className="rounded-full bg-slate-100 px-3 py-1 text-sm hover:bg-brand-500 hover:text-white dark:bg-slate-800 dark:text-slate-200"
+                onClick={() => { navigator.clipboard.writeText(n); toast.success("Đã copy: " + n); }}
+                title="Click để copy">
+                {n}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card p-5">

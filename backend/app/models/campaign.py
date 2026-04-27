@@ -32,6 +32,9 @@ class Campaign(Base):
     # --- Auto-publish ---
     auto_mode: Mapped[str] = mapped_column(String(16), default="semi")  # semi | full
     target_platforms: Mapped[list] = mapped_column(JSON, default=list)  # ["printify","etsy"]
+    # Specific platform_account.id rows to publish into. Empty list = first active per platform.
+    target_account_ids: Mapped[list] = mapped_column(JSON, default=list)
+    seo_auto: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # --- Schedule ---
     schedule_cron: Mapped[str | None] = mapped_column(String(64), nullable=True)  # "0 3 * * *"

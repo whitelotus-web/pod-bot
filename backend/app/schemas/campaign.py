@@ -12,11 +12,15 @@ class CampaignBase(BaseModel):
     ai_engine: str = "gemini"
     ai_model: str | None = None
     designs_per_keyword: int = 2
-    product_types: list[str] = Field(default_factory=lambda: ["tshirt"])
+    product_types: list[str] = Field(
+        default_factory=lambda: ["tshirt_unisex", "hoodie", "mug_11oz"]
+    )
     base_price_usd: float = 19.99
     auto_mode: str = "semi"
     # Default: Printify is core (auto-syncs to Etsy if shop is connected)
     target_platforms: list[str] = Field(default_factory=lambda: ["printify"])
+    target_account_ids: list[int] = Field(default_factory=list)
+    seo_auto: bool = True
     schedule_cron: str | None = None
     is_active: bool = True
 
@@ -37,6 +41,8 @@ class CampaignUpdate(BaseModel):
     base_price_usd: float | None = None
     auto_mode: str | None = None
     target_platforms: list[str] | None = None
+    target_account_ids: list[int] | None = None
+    seo_auto: bool | None = None
     schedule_cron: str | None = None
     is_active: bool | None = None
 

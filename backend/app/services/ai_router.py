@@ -1,0 +1,244 @@
+"""Role-aware AI key router with quota auto-failover.
+
+Use `with_failover()` to wrap any AI call so that 429/quota errors transparently
+rotate to the next key (same engine first, then sibling engines for the role).
+
+Key picker order (per role, per user):
+  1. is_active=True
+  2. ORDER BY priority ASC, quota_failures ASC, id ASC
+  3. Falls back to env-var key if no DB rows.
+"""
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TypeVar
+
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.crypto import decrypt
+from app.models import AIKey
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+# Engines allowed per role. UI / validation should respect this map.
+ROLE_ENGINES: dict[str, list[str]] = {
+    "image_generation": ["gemini", "openai", "replicate"],
+    "seo_writer": ["gemini", "openai"],
+    "keyword_expansion": ["gemini", "openai"],
+}
+
+
+@dataclass
+class AIKeyCandidate:
+    row: AIKey | None  # None = env-var fallback
+    engine: str
+    api_key: str | None  # None means "use whatever the engine reads from settings"
+
+    @property
+    def label(self) -> str:
+        if self.row is None:
+            return f"env:{self.engine}"
+        return f"#{self.row.id} {self.engine} (prio={self.row.priority})"
+
+
+def _env_key(engine: str) -> str | None:
+    if engine == "gemini":
+        return settings.gemini_api_key or None
+    if engine == "openai":
+        return settings.openai_api_key or None
+    if engine == "replicate":
+        return settings.replicate_api_token or None
+    return None
+
+
+def list_keys(
+    db: Session,
+    *,
+    user_id: int,
+    role: str,
+    engine: str | None = None,
+) -> list[AIKeyCandidate]:
+    """Return ordered list of candidate keys to try for (role, engine)."""
+    q = (
+        db.query(AIKey)
+        .filter_by(user_id=user_id, role=role, is_active=True)
+        .order_by(AIKey.priority.asc(), AIKey.quota_failures.asc(), AIKey.id.asc())
+    )
+    if engine:
+        q = q.filter(AIKey.engine == engine)
+    rows = q.all()
+    out: list[AIKeyCandidate] = []
+    for r in rows:
+        try:
+            out.append(AIKeyCandidate(row=r, engine=r.engine, api_key=decrypt(r.encrypted_key)))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Skip key #%s (decrypt failed): %s", r.id, exc)
+
+    # Add env fallbacks for engines that have no user key
+    used = {c.engine for c in out}
+    for eng in ROLE_ENGINES.get(role, []):
+        if engine and eng != engine:
+            continue
+        if eng in used:
+            continue
+        env = _env_key(eng)
+        if env:
+            out.append(AIKeyCandidate(row=None, engine=eng, api_key=env))
+    return out
+
+
+def is_quota_error(exc: BaseException) -> bool:
+    """Heuristic detector for quota / rate-limit errors across providers."""
+    msg = str(exc).lower()
+    triggers = (
+        "quota",
+        "rate limit",
+        "rate_limit",
+        "ratelimit",
+        "429",
+        "exceeded",
+        "insufficient_quota",
+        "billing",
+        "resource_exhausted",
+    )
+    return any(t in msg for t in triggers)
+
+
+def _bump_failure(db: Session, candidate: AIKeyCandidate) -> None:
+    if candidate.row is None:
+        return
+    candidate.row.quota_failures = (candidate.row.quota_failures or 0) + 1
+    candidate.row.last_used_at = datetime.now(UTC)
+    db.commit()
+
+
+def _bump_success(db: Session, candidate: AIKeyCandidate) -> None:
+    if candidate.row is None:
+        return
+    candidate.row.last_used_at = datetime.now(UTC)
+    db.commit()
+
+
+def with_failover(
+    db: Session,
+    *,
+    user_id: int,
+    role: str,
+    engine: str | None,
+    fn: Callable[[AIKeyCandidate], T],
+) -> T:
+    """Run `fn(candidate)` against each candidate until one succeeds.
+
+    `fn` must raise on quota/429; we rotate to the next key. Other exceptions
+    propagate immediately (we don't burn keys for unrelated bugs).
+    """
+    candidates = list_keys(db, user_id=user_id, role=role, engine=engine)
+    if not candidates:
+        raise RuntimeError(
+            f"Không có AI key nào active cho role={role!r} engine={engine!r}. "
+            f"Vào /settings/ai để thêm."
+        )
+
+    last_exc: BaseException | None = None
+    for cand in candidates:
+        try:
+            result = fn(cand)
+        except Exception as exc:  # noqa: BLE001
+            if is_quota_error(exc):
+                logger.warning("Key %s hit quota — failing over: %s", cand.label, exc)
+                _bump_failure(db, cand)
+                last_exc = exc
+                continue
+            raise
+        else:
+            _bump_success(db, cand)
+            return result
+
+    raise RuntimeError(
+        "Đã hết tất cả AI key cho role này (tất cả đều dính quota / 429). "
+        f"Lỗi cuối: {last_exc}"
+    )
+
+
+def expand_keywords_with_failover(
+    db: Session, *, user_id: int, niche: str, count: int = 10
+) -> list[str]:
+    """Convenience: ask the AI for long-tail keyword variations from a seed niche."""
+    import json
+    import re
+
+    def _call(cand: AIKeyCandidate) -> list[str]:
+        if cand.engine == "gemini":
+            from google import genai
+
+            client = genai.Client(api_key=cand.api_key)
+            resp = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=(
+                    f"Suggest {count} long-tail Etsy search keywords for the niche "
+                    f"'{niche}'. Each ≤6 words, lowercase, no special chars. "
+                    "Output JSON array of strings only, no code fences."
+                ),
+            )
+            text = re.sub(r"^```json\s*|\s*```$", "", (resp.text or "").strip())
+            arr = json.loads(text)
+            return [str(t).strip() for t in arr if str(t).strip()][:count]
+        if cand.engine == "openai":
+            from openai import OpenAI
+
+            client = OpenAI(api_key=cand.api_key)
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Suggest {count} long-tail Etsy search keywords for niche "
+                            f"'{niche}'. Output JSON array of strings only."
+                        ),
+                    }
+                ],
+            )
+            txt = re.sub(r"^```json\s*|\s*```$", "", (resp.choices[0].message.content or "").strip())
+            arr = json.loads(txt)
+            return [str(t).strip() for t in arr if str(t).strip()][:count]
+        raise ValueError(f"keyword_expansion not supported by engine {cand.engine}")
+
+    return with_failover(db, user_id=user_id, role="keyword_expansion", engine=None, fn=_call)
+
+
+def safe_generate_image(
+    db: Session,
+    *,
+    user_id: int,
+    engine_pref: str,
+    prompt: str,
+    model: str | None = None,
+    size: str = "1024x1024",
+):
+    """Use role=image_generation key with failover to other engines."""
+    from app.services.ai import get_engine
+
+    def _call(cand: AIKeyCandidate):
+        eng = get_engine(cand.engine, api_key=cand.api_key)
+        return eng.generate(prompt, model=model, size=size)
+
+    # Try preferred engine first; if all preferred-engine keys exhausted, fall through to others.
+    try:
+        return with_failover(db, user_id=user_id, role="image_generation", engine=engine_pref, fn=_call)
+    except RuntimeError as exc:
+        if "Đã hết tất cả AI key" not in str(exc) and "Không có AI key" not in str(exc):
+            raise
+        logger.info("Engine %s exhausted — fallback to any available image engine.", engine_pref)
+        return with_failover(db, user_id=user_id, role="image_generation", engine=None, fn=_call)
+
+
+def role_engines(role: str) -> Iterable[str]:
+    return ROLE_ENGINES.get(role, [])

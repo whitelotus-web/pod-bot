@@ -70,6 +70,8 @@ export type Campaign = {
   base_price_usd: number;
   auto_mode: "semi" | "full";
   target_platforms: string[];
+  target_account_ids: number[];
+  seo_auto: boolean;
   schedule_cron: string | null;
   last_run_at: string | null;
   is_active: boolean;
@@ -96,6 +98,7 @@ export type Design = {
   engine: string;
   model: string | null;
   file_path: string;
+  bg_removed_path: string | null;
   thumbnail_path: string | null;
   status: string;
   created_at: string;
@@ -107,6 +110,7 @@ export type Product = {
   platform_account_id: number;
   external_id: string | null;
   url: string | null;
+  product_type: string;
   title: string;
   description: string;
   tags: string[];
@@ -129,13 +133,49 @@ export type PlatformAccount = {
   updated_at: string;
 };
 
+export type AIRole = "image_generation" | "seo_writer" | "keyword_expansion";
+
 export type AIKey = {
   id: number;
+  role: AIRole;
   engine: "gemini" | "openai" | "replicate";
   label: string;
   masked_key: string;
   is_active: boolean;
+  priority: number;
+  quota_failures: number;
+  last_used_at: string | null;
   created_at: string;
+};
+
+export type AIRoleMeta = {
+  id: AIRole;
+  label: string;
+  description: string;
+  engines: string[];
+};
+
+export type ProductBlueprint = {
+  id: string;
+  label: string;
+  category: string;
+  platform_blueprint: Record<string, number | string>;
+  base_price_usd: number;
+  suggested_retail_usd: number;
+  description: string;
+};
+
+export type ProductPreset = {
+  label: string;
+  description: string;
+  ids: string[];
+};
+
+export type SEOContent = {
+  title: string;
+  description: string;
+  tags: string[];
+  source: "ai" | "template";
 };
 
 export type PromptTemplate = {
