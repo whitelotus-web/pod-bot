@@ -34,6 +34,7 @@ from app.services.platforms import get_platform
 from app.services.quality import evaluate_design
 from app.services.seo import generate_seo
 from app.services.trademark import filter_keywords
+from app.services.upscale import upscale as upscale_design
 from app.services.warmup import decide_publish
 from app.workers.celery_app import celery_app
 
@@ -78,6 +79,8 @@ def run_campaign(self, campaign_id: int, force_auto: bool | None = None) -> dict
                         _ensure_transparent(db, d)
                         if campaign.quality_gates_enabled and not _quality_gate(db, campaign, d):
                             continue
+                        if getattr(campaign, "upscale_enabled", True):
+                            _upscale_design(db, campaign, d)
                         _render_mockups(db, d, campaign.product_types or ["tshirt_unisex"])
                         created_designs.append(d)
                 except Exception as exc:  # noqa: BLE001
@@ -154,6 +157,25 @@ def _trademark_filter(db, campaign: Campaign, terms: list[Keyword]) -> list[Keyw
                 logger.warning("notify trademark_hit failed: %s", exc)
     db.commit()
     return kept
+
+
+def _upscale_design(db, campaign: Campaign, design: Design) -> None:
+    """Upscale a design to print-ready DPI. Output stored as upscaled_path."""
+    rel = design.bg_removed_path or design.file_path
+    src = Path(settings.media_root) / rel
+    if not src.exists():
+        return
+    target = max(2048, int(getattr(campaign, "upscale_min_long_edge", 4500) or 4500))
+    out = src.with_name(src.stem + "_print.png")
+    try:
+        res = upscale_design(src, out_path=out, min_long_edge=target)
+        design.upscaled_path = str(Path(res.output_path).relative_to(settings.media_root))
+        design.upscale_backend = res.backend
+        design.print_width = res.width
+        design.print_height = res.height
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("upscale failed for design #%s: %s", design.id, exc)
 
 
 def _quality_gate(db, campaign: Campaign, design: Design) -> bool:
@@ -391,7 +413,9 @@ def _publish_one(db, campaign: Campaign, account, design: Design, product_id: st
         else [t.strip() for t in (campaign.niche or "").split(",") if t.strip()]
     ) or [campaign.niche or "trendy"]
 
-    src_rel = design.bg_removed_path or design.file_path
+    # Publish always uses the highest-resolution variant available so the
+    # uploaded image meets Printify's 300 DPI / 4500x5400 requirement.
+    src_rel = design.upscaled_path or design.bg_removed_path or design.file_path
     design_abs = str(Path(settings.media_root) / src_rel)
     try:
         adapter = get_platform(account.platform, account)

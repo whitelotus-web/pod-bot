@@ -25,8 +25,12 @@ class Design(Base):
     file_path: Mapped[str] = mapped_column(String(512))  # relative to MEDIA_ROOT
     bg_removed_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     thumbnail_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    upscaled_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    upscale_backend: Mapped[str | None] = mapped_column(String(32), nullable=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    print_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    print_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     status: Mapped[str] = mapped_column(String(32), default="ready")  # ready|approved|rejected
     meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)

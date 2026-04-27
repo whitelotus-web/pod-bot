@@ -42,6 +42,10 @@ class Campaign(Base):
     trademark_check_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     uspto_check_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Upscaling for print-ready DPI (Printify wants ≥4500x5400)
+    upscale_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    upscale_min_long_edge: Mapped[int] = mapped_column(Integer, default=4500)
+
     # Prompt template ids — empty list = let pipeline pick by family round-robin
     prompt_template_ids: Mapped[list] = mapped_column(JSON, default=list)
 
