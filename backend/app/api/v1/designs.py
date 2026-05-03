@@ -27,11 +27,13 @@ def list_designs(
 def approve_design(
     design_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),  # noqa: ARG001
+    user: User = Depends(get_current_user),
 ) -> dict:
     d = db.get(Design, design_id)
     if not d:
         raise HTTPException(404, "Không tìm thấy design")
+    if d.campaign and d.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
     d.status = "approved"
     db.commit()
     return {"ok": True}
@@ -41,11 +43,13 @@ def approve_design(
 def reject_design(
     design_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),  # noqa: ARG001
+    user: User = Depends(get_current_user),
 ) -> dict:
     d = db.get(Design, design_id)
     if not d:
         raise HTTPException(404, "Không tìm thấy design")
+    if d.campaign and d.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
     d.status = "rejected"
     db.commit()
     return {"ok": True}
@@ -70,6 +74,8 @@ def regenerate_design(
     d = db.get(Design, design_id)
     if not d:
         raise HTTPException(404, "Không tìm thấy design")
+    if d.campaign and d.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
 
     try:
         img = safe_generate_image(
@@ -92,7 +98,7 @@ def regenerate_design(
 def remove_bg(
     design_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),  # noqa: ARG001
+    user: User = Depends(get_current_user),
 ) -> DesignRead:
     """Run background-removal (rembg + alpha threshold fallback) on a design."""
     from pathlib import Path
@@ -103,6 +109,8 @@ def remove_bg(
     d = db.get(Design, design_id)
     if not d:
         raise HTTPException(404, "Không tìm thấy design")
+    if d.campaign and d.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
 
     src = Path(settings.media_root) / d.file_path
     try:

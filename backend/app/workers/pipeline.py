@@ -331,6 +331,10 @@ def _publish_all(db, campaign: Campaign, designs: list[Design]) -> int:
     published = 0
     targets = campaign.target_platforms or []
     product_types = campaign.product_types or ["tshirt_unisex"]
+    # Track accounts already notified about hitting their warm-up cap in this
+    # run, so we send at most one warmup_capped notification per account
+    # (instead of one per skipped design × product_type combination).
+    warmup_notified: set[int] = set()
     for platform_name in targets:
         accounts = _select_accounts(db, campaign, platform_name)
         if not accounts:
@@ -339,7 +343,7 @@ def _publish_all(db, campaign: Campaign, designs: list[Design]) -> int:
         for account in accounts:
             for design in designs:
                 for ptype in product_types:
-                    _publish_one(db, campaign, account, design, ptype)
+                    _publish_one(db, campaign, account, design, ptype, warmup_notified)
                     published_now = (
                         db.query(Product)
                         .filter_by(
@@ -356,7 +360,14 @@ def _publish_all(db, campaign: Campaign, designs: list[Design]) -> int:
     return published
 
 
-def _publish_one(db, campaign: Campaign, account, design: Design, product_id: str) -> None:
+def _publish_one(
+    db,
+    campaign: Campaign,
+    account,
+    design: Design,
+    product_id: str,
+    warmup_notified: set[int] | None = None,
+) -> None:
     # Reset stale counter from previous day before checking the warmup gate.
     today = datetime.now(UTC).date()
     if account.today_publish_date != today:
@@ -374,22 +385,29 @@ def _publish_one(db, campaign: Campaign, account, design: Design, product_id: st
         logger.info(
             "warmup gate blocked publish for account %s: %s", account.id, decision.reason
         )
-        try:
-            notify(
-                db,
-                user_id=campaign.user_id,
-                kind="warmup_capped",
-                title=f"Warm-up: bỏ qua publish cho account {account.label or account.id}",
-                body=decision.reason,
-                severity="info",
-                payload={
-                    "account_id": account.id,
-                    "today": decision.today_published,
-                    "cap": decision.cap,
-                },
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("notify warmup failed: %s", exc)
+        # Only notify the first time we hit the cap for this account in this run;
+        # otherwise a campaign with N designs × M product types would generate
+        # N*M nearly-identical notifications.
+        already_notified = warmup_notified is not None and account.id in warmup_notified
+        if not already_notified:
+            try:
+                notify(
+                    db,
+                    user_id=campaign.user_id,
+                    kind="warmup_capped",
+                    title=f"Warm-up: bỏ qua publish cho account {account.label or account.id}",
+                    body=decision.reason,
+                    severity="info",
+                    payload={
+                        "account_id": account.id,
+                        "today": decision.today_published,
+                        "cap": decision.cap,
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("notify warmup failed: %s", exc)
+            if warmup_notified is not None:
+                warmup_notified.add(account.id)
         return
 
     blueprint = get_blueprint(product_id)
