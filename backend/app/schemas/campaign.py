@@ -15,7 +15,10 @@ class CampaignBase(BaseModel):
     product_types: list[str] = Field(
         default_factory=lambda: ["tshirt_unisex", "hoodie", "mug_11oz"]
     )
-    base_price_usd: float = 19.99
+    # 0 (or any non-positive value) means "use the per-product suggested
+    # retail price from the catalog". Any positive value is treated as the
+    # user's intentional override and is respected verbatim.
+    base_price_usd: float = 0
     auto_mode: str = "semi"
     # Default: Printify is core (auto-syncs to Etsy if shop is connected)
     target_platforms: list[str] = Field(default_factory=lambda: ["printify"])

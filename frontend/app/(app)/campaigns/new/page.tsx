@@ -37,7 +37,7 @@ export default function NewCampaignPage() {
     ai_engine: "gemini",
     designs_per_keyword: 2,
     product_types: ["tshirt_unisex", "hoodie", "mug_11oz"] as string[],
-    base_price_usd: 19.99,
+    base_price_usd: 0,  // 0 = dùng giá đề xuất theo từng product type
     auto_mode: "semi" as "semi" | "full",
     target_platforms: ["printify"] as string[],
     target_account_ids: [] as number[],
@@ -315,9 +315,12 @@ export default function NewCampaignPage() {
           </div>
           <div>
             <label className="label">Giá (USD)</label>
-            <input type="number" step="0.01" className="input"
+            <input type="number" step="0.01" min={0} className="input"
               value={form.base_price_usd}
               onChange={(e) => setForm({ ...form, base_price_usd: Number(e.target.value) })} />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Để 0 = dùng giá đề xuất theo từng loại sản phẩm (tee $19.99, hoodie $42.99, poster $29.99...)
+            </p>
           </div>
         </div>
 

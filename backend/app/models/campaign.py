@@ -27,7 +27,8 @@ class Campaign(Base):
 
     # --- Mockup + Product ---
     product_types: Mapped[list] = mapped_column(JSON, default=list)  # ["tshirt","hoodie"]
-    base_price_usd: Mapped[float] = mapped_column(default=19.99)
+    # 0 = "use catalog suggested price"; >0 = user-intentional override.
+    base_price_usd: Mapped[float] = mapped_column(default=0.0)
 
     # --- Auto-publish ---
     auto_mode: Mapped[str] = mapped_column(String(16), default="semi")  # semi | full

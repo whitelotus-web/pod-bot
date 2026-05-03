@@ -83,9 +83,15 @@ BUILTIN_BLACKLIST: frozenset[str] = frozenset(
 
 # Phrases to never rewrite (substring match, case-insensitive).
 # These are fuzzier — match anywhere in the text.
+#
+# IMPORTANT: every entry must be specific enough that a substring match
+# can't fire on legitimate POD copy. Bare words like ``official`` or
+# ``licensed`` would reject useful niches such as ``officially the best
+# dog dad`` or ``unofficial fan art``, so we only match the longer phrases
+# that strongly signal an actual licensing claim.
 SUBSTRING_BLACKLIST: tuple[str, ...] = (
     "® ", " ®", "™",
-    "official", "licensed",
+    "officially licensed", "officially authorized", "licensed product",
     "copyright ©", "all rights reserved",
 )
 

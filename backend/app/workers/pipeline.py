@@ -447,9 +447,14 @@ def _publish_one(
         return
 
     blueprint = get_blueprint(product_id)
+    # ``base_price_usd <= 0`` is the explicit "auto / use catalog suggestion"
+    # signal — any positive value is the user's intentional price and is
+    # respected as-is, even if it happens to equal a previous default like
+    # 19.99 (which would otherwise be silently overridden for higher-priced
+    # blueprints such as hoodies $42.99 / posters $29.99).
     price = (
         blueprint.suggested_retail_usd
-        if blueprint and campaign.base_price_usd in (0, 19.99)
+        if blueprint and (campaign.base_price_usd or 0) <= 0
         else campaign.base_price_usd
     )
     seo = generate_seo(
