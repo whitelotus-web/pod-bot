@@ -436,7 +436,7 @@ def _publish_one(
                     severity="info",
                     payload={
                         "account_id": account.id,
-                        "today": decision.today_published,
+                        "today": decision.used_today,
                         "cap": decision.cap,
                     },
                 )
