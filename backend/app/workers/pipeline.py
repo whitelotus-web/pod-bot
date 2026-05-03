@@ -452,11 +452,20 @@ def _publish_one(
     # respected as-is, even if it happens to equal a previous default like
     # 19.99 (which would otherwise be silently overridden for higher-priced
     # blueprints such as hoodies $42.99 / posters $29.99).
-    price = (
-        blueprint.suggested_retail_usd
-        if blueprint and (campaign.base_price_usd or 0) <= 0
-        else campaign.base_price_usd
-    )
+    user_price = campaign.base_price_usd or 0
+    if user_price > 0:
+        price = user_price
+    elif blueprint:
+        price = blueprint.suggested_retail_usd
+    else:
+        # Unknown product_type AND user is on auto-pricing — fall back to a
+        # safe non-zero default so we never publish a $0.00 listing.
+        price = 19.99
+        logger.warning(
+            "no blueprint for product_id=%s and base_price_usd<=0 — using $%.2f safe default",
+            product_id,
+            price,
+        )
     seo = generate_seo(
         keyword=design.title,
         niche=campaign.niche or design.title,
