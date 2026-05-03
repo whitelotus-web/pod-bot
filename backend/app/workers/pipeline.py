@@ -313,17 +313,39 @@ def _render_mockups(db, design: Design, product_types: list[str]) -> None:
 def _select_accounts(db, campaign: Campaign, platform_name: str) -> list[PlatformAccount]:
     """Resolve the campaign's target shops for a platform.
 
-    Empty target_account_ids → first active account for the platform (legacy behavior).
+    Filters out accounts that are unhealthy (``paused``/``banned``) or whose
+    ``paused_until`` is still in the future, so the pipeline never publishes
+    to a shop already flagged at risk by the health monitor — publishing to a
+    paused/banned shop can escalate a warning into a permanent ban.
+
+    Empty ``target_account_ids`` → first eligible account for the platform.
+    Non-empty ``target_account_ids`` with no match for this platform → falls
+    back to the first eligible account so the user doesn't experience a
+    silent skip when they selected the platform but none of the chosen
+    account ids belonged to it.
     """
-    q = db.query(PlatformAccount).filter_by(
-        user_id=campaign.user_id,
-        platform=platform_name,
-        is_active=True,
+    now = datetime.now(UTC)
+    base_q = db.query(PlatformAccount).filter(
+        PlatformAccount.user_id == campaign.user_id,
+        PlatformAccount.platform == platform_name,
+        PlatformAccount.is_active.is_(True),
+        PlatformAccount.health_status.in_(("healthy", "warn")),
+        (PlatformAccount.paused_until.is_(None)) | (PlatformAccount.paused_until <= now),
     )
     selected_ids = list(campaign.target_account_ids or [])
     if selected_ids:
-        return q.filter(PlatformAccount.id.in_(selected_ids)).all()
-    first = q.order_by(PlatformAccount.id.asc()).first()
+        rows = base_q.filter(PlatformAccount.id.in_(selected_ids)).all()
+        if rows:
+            return rows
+        # Intersection empty for this platform — fall back to first eligible
+        # account so the user doesn't silently lose this platform.
+        logger.warning(
+            "target_account_ids %s contains no eligible %s account; "
+            "falling back to first active+healthy account for the platform",
+            selected_ids,
+            platform_name,
+        )
+    first = base_q.order_by(PlatformAccount.id.asc()).first()
     return [first] if first else []
 
 
@@ -368,8 +390,22 @@ def _publish_one(
     product_id: str,
     warmup_notified: set[int] | None = None,
 ) -> None:
+    # Defense-in-depth: even though _select_accounts pre-filters paused/banned
+    # accounts, the account row could have been flipped to paused/banned mid-run
+    # (e.g. by a webhook handler). Re-check health here and skip silently if so.
+    now = datetime.now(UTC)
+    if account.health_status in ("paused", "banned") or (
+        account.paused_until is not None and account.paused_until > now
+    ):
+        logger.warning(
+            "skipping publish for account %s — health=%s paused_until=%s",
+            account.id,
+            account.health_status,
+            account.paused_until,
+        )
+        return
     # Reset stale counter from previous day before checking the warmup gate.
-    today = datetime.now(UTC).date()
+    today = now.date()
     if account.today_publish_date != today:
         account.today_publish_date = today
         account.today_publish_count = 0

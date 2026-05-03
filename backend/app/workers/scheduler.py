@@ -122,13 +122,31 @@ def account_health_sweep() -> dict:
         now = datetime.now(UTC)
         rows = db.query(PlatformAccount).all()
         unpaused = 0
+        recovered = 0
         for r in rows:
+            # 1) Expire paused_until → drop back to warn so the account becomes
+            # publishable again, but keep one degree of caution.
             if r.paused_until and r.paused_until <= now:
                 r.paused_until = None
                 if r.health_status == "paused":
                     r.health_status = "warn"
                 unpaused += 1
+
+            # 2) Auto-recover warn → healthy after 24h of clean activity (no
+            # publishes have been blocked, no new pause was issued). We use
+            # last_publish_at as the activity signal: if the most recent
+            # publish succeeded ≥24h ago and the account isn't currently
+            # paused, treat the warn flag as stale.
+            if (
+                r.health_status == "warn"
+                and (r.paused_until is None or r.paused_until <= now)
+                and r.last_publish_at is not None
+                and (now - r.last_publish_at).total_seconds() >= 86400
+            ):
+                r.health_status = "healthy"
+                r.health_note = "Auto-recovered after 24h clean"
+                recovered += 1
         db.commit()
-        return {"unpaused": unpaused}
+        return {"unpaused": unpaused, "recovered": recovered}
     finally:
         db.close()
