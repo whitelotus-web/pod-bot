@@ -163,9 +163,12 @@ def upcoming_seasonal_events(
 ) -> list[SeasonalEvent]:
     """Events whose `push_weeks_before` window includes today + (0..weeks_ahead)."""
     today = today or date.today()
-    upcoming: list[SeasonalEvent] = []
+    # Keep the computed evt_date alongside the event so we can sort
+    # chronologically — sorting by (month, day) breaks across the year
+    # boundary (e.g. on Nov 1, January's New Year would sort before
+    # December's Christmas even though Christmas occurs first).
+    upcoming: list[tuple[date, SeasonalEvent]] = []
     for evt in SEASONAL_EVENTS:
-        # Find next occurrence of (month, day) on or after today.
         year = today.year
         try:
             evt_date = date(year, evt.month, evt.day)
@@ -178,9 +181,9 @@ def upcoming_seasonal_events(
                 continue
         delta_days = (evt_date - today).days
         if delta_days <= evt.push_weeks_before * 7 + weeks_ahead * 7:
-            upcoming.append(evt)
-    upcoming.sort(key=lambda e: (e.month, e.day))
-    return upcoming
+            upcoming.append((evt_date, evt))
+    upcoming.sort(key=lambda pair: pair[0])
+    return [evt for _, evt in upcoming]
 
 
 def seasonal_keyword_seeds(today: date | None = None) -> list[tuple[str, str]]:

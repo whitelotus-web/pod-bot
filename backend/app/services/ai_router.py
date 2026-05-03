@@ -99,6 +99,17 @@ def list_keys(
     return out
 
 
+class AISoftError(Exception):
+    """Retriable AI-call failure that is NOT a quota error.
+
+    Raise this from a `with_failover` callback when the engine returned
+    unusable output (e.g. unparseable JSON, malformed schema) but the key
+    itself is still healthy. `with_failover` will rotate to the next
+    candidate the same way it does for quota errors, so a transient model
+    glitch on one engine doesn't kill the whole pipeline.
+    """
+
+
 def is_quota_error(exc: BaseException) -> bool:
     """Heuristic detector for quota / rate-limit errors across providers."""
     msg = str(exc).lower()
@@ -114,6 +125,10 @@ def is_quota_error(exc: BaseException) -> bool:
         "resource_exhausted",
     )
     return any(t in msg for t in triggers)
+
+
+def _is_retriable(exc: BaseException) -> bool:
+    return isinstance(exc, AISoftError) or is_quota_error(exc)
 
 
 def _bump_failure(db: Session, candidate: AIKeyCandidate) -> None:
@@ -159,9 +174,18 @@ def with_failover(
         try:
             result = fn(cand)
         except Exception as exc:  # noqa: BLE001
-            if is_quota_error(exc):
-                logger.warning("Key %s hit quota — failing over: %s", cand.label, exc)
-                _bump_failure(db, cand)
+            if _is_retriable(exc):
+                # Only bump quota_failures for genuine quota errors so a
+                # transient parse/soft error doesn't penalize the key.
+                if is_quota_error(exc):
+                    logger.warning("Key %s hit quota — failing over: %s", cand.label, exc)
+                    _bump_failure(db, cand)
+                else:
+                    logger.warning(
+                        "Key %s soft-failed (%s) — failing over to next candidate.",
+                        cand.label,
+                        exc,
+                    )
                 last_exc = exc
                 continue
             raise

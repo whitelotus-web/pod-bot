@@ -18,11 +18,13 @@ router = APIRouter()
 def for_keyword(
     keyword_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> dict:
     kw = db.get(Keyword, keyword_id)
     if not kw:
         raise HTTPException(404, "Keyword không tồn tại")
+    if kw.campaign and kw.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
     history = (
         db.query(KeywordVolumeHistory)
         .filter(KeywordVolumeHistory.keyword_id == keyword_id)
@@ -56,11 +58,13 @@ class IngestRequest(__import__("pydantic").BaseModel):
 def ingest_volume(
     payload: IngestRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> dict:
     kw = db.get(Keyword, payload.keyword_id)
     if not kw:
         raise HTTPException(404, "Keyword không tồn tại")
+    if kw.campaign and kw.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
     row = KeywordVolumeHistory(
         keyword_id=payload.keyword_id,
         date=payload.date,

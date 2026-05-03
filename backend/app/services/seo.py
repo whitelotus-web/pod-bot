@@ -206,21 +206,24 @@ def generate_seo(
     assert blueprint is not None
 
     if user_id is not None and db is not None:
-        from app.services.ai_router import AIKeyCandidate, with_failover
+        from app.services.ai_router import AIKeyCandidate, AISoftError, with_failover
 
         def _call(cand: AIKeyCandidate) -> SEOContent:
             if not cand.api_key:
-                raise RuntimeError("missing api key")
+                raise AISoftError("missing api key")
             if cand.engine == "gemini":
                 out = _ai_generate_gemini(keyword, niche, blueprint, cand.api_key)
             elif cand.engine == "openai":
                 out = _ai_generate_openai(keyword, niche, blueprint, cand.api_key)
             else:
-                raise ValueError(f"seo_writer not supported by engine {cand.engine}")
+                raise AISoftError(f"seo_writer not supported by engine {cand.engine}")
             if out is None:
-                # Treat parse / non-quota failure as a hard fail for this key, but
-                # not a quota error — propagate so the caller can fall back to template.
-                raise RuntimeError(f"{cand.engine} returned unparseable SEO")
+                # Engine returned unparseable JSON or empty output. Raise
+                # AISoftError so with_failover rotates to the next candidate
+                # (e.g. OpenAI's response_format=json_object often parses where
+                # raw Gemini occasionally doesn't) instead of giving up after
+                # the first engine.
+                raise AISoftError(f"{cand.engine} returned unparseable SEO")
             return out
 
         try:
