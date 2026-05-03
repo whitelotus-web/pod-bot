@@ -37,7 +37,7 @@ class AIKeyRead(BaseModel):
 class AIKeyTestRequest(BaseModel):
     engine: str
     api_key: str | None = None  # if missing, test the saved key for the user
-    role: str | None = None  # optional context, currently unused server-side
+    role: str | None = None  # optional filter: when set, tests the saved key matching this role
 
 
 class AIKeyTestResponse(BaseModel):

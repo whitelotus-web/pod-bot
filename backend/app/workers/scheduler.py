@@ -137,7 +137,13 @@ def account_health_sweep() -> dict:
             # last_publish_at as the activity signal: if the most recent
             # publish succeeded ≥24h ago and the account isn't currently
             # paused, treat the warn flag as stale.
-            if (
+            #
+            # NOTE: must be ``elif`` — otherwise an account that was just
+            # transitioned paused→warn in step 1 above would immediately match
+            # this branch (warn + paused_until=None + last_publish_at typically
+            # ≥24h old because the account was paused) and skip the warn
+            # cooling-off period entirely.
+            elif (
                 r.health_status == "warn"
                 and (r.paused_until is None or r.paused_until <= now)
                 and r.last_publish_at is not None
