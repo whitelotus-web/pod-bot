@@ -319,10 +319,14 @@ def _select_accounts(db, campaign: Campaign, platform_name: str) -> list[Platfor
     paused/banned shop can escalate a warning into a permanent ban.
 
     Empty ``target_account_ids`` → first eligible account for the platform.
-    Non-empty ``target_account_ids`` with no match for this platform → falls
-    back to the first eligible account so the user doesn't experience a
-    silent skip when they selected the platform but none of the chosen
-    account ids belonged to it.
+    Non-empty ``target_account_ids`` are handled in two distinct cases:
+      - **All selected ids are for OTHER platforms** (e.g. user picked Etsy
+        accounts but loop is on Printify): fall back to the first eligible
+        account on this platform, so we don't silently lose the platform.
+      - **Some selected ids ARE for this platform but unhealthy**: return an
+        empty list — DO NOT fall back to an unselected shop, that would
+        defeat both the user's explicit selection and the health monitor's
+        safety pause.
     """
     now = datetime.now(UTC)
     base_q = db.query(PlatformAccount).filter(
@@ -337,10 +341,28 @@ def _select_accounts(db, campaign: Campaign, platform_name: str) -> list[Platfor
         rows = base_q.filter(PlatformAccount.id.in_(selected_ids)).all()
         if rows:
             return rows
-        # Intersection empty for this platform — fall back to first eligible
-        # account so the user doesn't silently lose this platform.
+        # Distinguish "selected ids exist for this platform but are unhealthy"
+        # from "selected ids belong to a different platform entirely".
+        unhealthy_match = (
+            db.query(PlatformAccount.id)
+            .filter(
+                PlatformAccount.user_id == campaign.user_id,
+                PlatformAccount.platform == platform_name,
+                PlatformAccount.id.in_(selected_ids),
+            )
+            .first()
+        )
+        if unhealthy_match is not None:
+            logger.warning(
+                "target_account_ids %s for %s are all unhealthy/paused; "
+                "skipping publish for this platform (NOT falling back to an "
+                "unselected shop) to respect the health monitor pause",
+                selected_ids,
+                platform_name,
+            )
+            return []
         logger.warning(
-            "target_account_ids %s contains no eligible %s account; "
+            "target_account_ids %s contains no %s account; "
             "falling back to first active+healthy account for the platform",
             selected_ids,
             platform_name,
