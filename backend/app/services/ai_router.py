@@ -84,14 +84,16 @@ def list_keys(
         except Exception as exc:  # noqa: BLE001
             logger.warning("Skip key #%s (decrypt failed): %s", r.id, exc)
 
-    # Add env fallbacks for engines that have no user key
-    used = {c.engine for c in out}
+    # Append env-var keys at the END for every allowed engine, so they act
+    # as a last-resort safety net even after the user's own DB keys for the
+    # same engine have been exhausted (previously the env fallback was only
+    # added when the user had zero DB keys for the engine, which meant
+    # admin-configured env keys were unreachable as soon as a user added a
+    # single DB key).
     for eng in ROLE_ENGINES.get(role, []):
         if engine and eng != engine:
             continue
         if exclude_engine and eng == exclude_engine:
-            continue
-        if eng in used:
             continue
         env = _env_key(eng)
         if env:
@@ -260,7 +262,23 @@ def safe_generate_image(
 
     def _call(cand: AIKeyCandidate):
         eng = get_engine(cand.engine, api_key=cand.api_key)
-        return eng.generate(prompt, model=model, size=size)
+        # ``model`` names are engine-specific (e.g. ``gemini-2.5-flash`` only
+        # makes sense for Gemini). When failover rotates to a sibling engine,
+        # drop the caller's model so the engine adapter picks its own default
+        # — otherwise we hand a Gemini model id to OpenAI and get a hard
+        # failure that ``with_failover`` doesn't retry.
+        effective_model = model if cand.engine == engine_pref else None
+        try:
+            return eng.generate(prompt, model=effective_model, size=size)
+        except Exception as exc:  # noqa: BLE001
+            # Translate provider model-rejection / validation errors into
+            # AISoftError so failover can keep going. Keep quota errors as-is.
+            if is_quota_error(exc):
+                raise
+            msg = str(exc).lower()
+            if "model" in msg and ("not found" in msg or "invalid" in msg or "unknown" in msg):
+                raise AISoftError(f"{cand.engine} rejected model {effective_model!r}: {exc}") from exc
+            raise
 
     # Try preferred engine first; if all preferred-engine keys exhausted, fall through
     # to sibling engines for the role. We pass exclude_engine=engine_pref on the second
