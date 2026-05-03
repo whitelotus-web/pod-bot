@@ -234,8 +234,15 @@ def generate_seo(
             logger.info("SEO with_failover exhausted (%s) — using template fallback.", exc)
 
     # No DB context, no keys, or all keys failed — fall through to template.
+    # Wrap the env-key path so a quota error here doesn't propagate up and
+    # fail a listing that should have been published with template-based SEO
+    # (the deterministic _fallback always succeeds).
     if settings.gemini_api_key:
-        ai = _ai_generate_gemini(keyword, niche, blueprint, settings.gemini_api_key)
+        try:
+            ai = _ai_generate_gemini(keyword, niche, blueprint, settings.gemini_api_key)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("SEO env-key Gemini failed (%s) — using template fallback.", exc)
+            ai = None
         if ai is not None:
             return ai
     return _fallback(keyword, niche, blueprint)
