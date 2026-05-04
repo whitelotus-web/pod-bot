@@ -169,7 +169,7 @@ def retry_pending_publishes(limit: int = 50) -> dict:
     (or after exhausting the ladder) marks the row as ``failed_terminal``.
     """
     from app.models import Design, PlatformAccount, Product
-    from app.platforms import get_platform
+    from app.services.platforms import get_platform
     from app.services.retry_queue import (
         is_transient,
         mark_published,
@@ -206,14 +206,17 @@ def retry_pending_publishes(limit: int = 50) -> dict:
                 account.paused_until is not None and account.paused_until > now
             ):
                 # Don't retry into a paused shop — push the next attempt back
-                # one full ladder step so we don't busy-loop.
-                schedule_retry(p, RuntimeError(f"account {account.id} still paused"))
+                # one full ladder step so we don't busy-loop. If the ladder is
+                # exhausted, mark the row terminal so we don't keep re-picking
+                # it every sweep.
+                if not schedule_retry(p, RuntimeError(f"account {account.id} still paused")):
+                    mark_terminal(p, RuntimeError(f"account {account.id} paused, retries exhausted"))
+                    terminal += 1
                 continue
             try:
                 from pathlib import Path as _Path
 
                 from app.core.config import settings as _settings
-
                 src_rel = design.upscaled_path or design.bg_removed_path or design.file_path
                 design_abs = str(_Path(_settings.media_root) / src_rel)
                 adapter = get_platform(account.platform, account)
