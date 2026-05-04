@@ -3,7 +3,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { api, mediaURL, type GenerateResponse, type PromptTemplate } from "@/lib/api";
+import {
+  api,
+  mediaURL,
+  type GenerateResponse,
+  type PlatformAccount,
+  type ProductBlueprint,
+  type ProductPreset,
+  type PromptTemplate,
+} from "@/lib/api";
 
 const ALL_KEYWORD_SOURCES = [
   { id: "google_trends", label: "Google Trends" },
@@ -28,10 +36,12 @@ export default function NewCampaignPage() {
     keyword_sources: ["google_trends", "etsy"] as string[],
     ai_engine: "gemini",
     designs_per_keyword: 2,
-    product_types: ["tshirt"] as string[],
-    base_price_usd: 19.99,
+    product_types: ["tshirt_unisex", "hoodie", "mug_11oz"] as string[],
+    base_price_usd: 0,  // 0 = dùng giá đề xuất theo từng product type
     auto_mode: "semi" as "semi" | "full",
     target_platforms: ["printify"] as string[],
+    target_account_ids: [] as number[],
+    seo_auto: true,
     schedule_cron: "",
   });
 
@@ -43,8 +53,23 @@ export default function NewCampaignPage() {
   const [genBusy, setGenBusy] = useState(false);
   const [genResult, setGenResult] = useState<GenerateResponse | null>(null);
 
+  const [mode, setMode] = useState<"basic" | "advanced">("basic");
+  const [catalog, setCatalog] = useState<ProductBlueprint[]>([]);
+  const [presets, setPresets] = useState<Record<string, ProductPreset>>({});
+  const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
+
   useEffect(() => {
     api.get<PromptTemplate[]>("/v1/prompts/templates").then(setTemplates).catch(() => {});
+    api
+      .get<{ products: ProductBlueprint[]; presets: Record<string, ProductPreset> }>(
+        "/v1/catalog/products"
+      )
+      .then((d) => {
+        setCatalog(d.products);
+        setPresets(d.presets);
+      })
+      .catch(() => {});
+    api.get<PlatformAccount[]>("/v1/platforms").then(setAccounts).catch(() => {});
   }, []);
 
   function applyTemplate(id: string) {
@@ -89,11 +114,27 @@ export default function NewCampaignPage() {
     }
   }
 
-  function toggle(field: "keyword_sources" | "target_platforms", id: string) {
+  function toggle(field: "keyword_sources" | "target_platforms" | "product_types", id: string) {
     setForm((f) => ({
       ...f,
       [field]: f[field].includes(id) ? f[field].filter((x) => x !== id) : [...f[field], id],
     }));
+  }
+
+  function toggleAccount(id: number) {
+    setForm((f) => ({
+      ...f,
+      target_account_ids: f.target_account_ids.includes(id)
+        ? f.target_account_ids.filter((x) => x !== id)
+        : [...f.target_account_ids, id],
+    }));
+  }
+
+  function applyPreset(presetId: string) {
+    const p = presets[presetId];
+    if (!p) return;
+    setForm((f) => ({ ...f, product_types: [...p.ids] }));
+    toast.success(`Đã áp preset: ${p.label} (${p.ids.length} sản phẩm)`);
   }
 
   async function submit() {
@@ -108,7 +149,40 @@ export default function NewCampaignPage() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <h1 className="text-2xl font-bold">Chiến dịch mới</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Chiến dịch mới</h1>
+        <div className="inline-flex rounded-lg bg-slate-100 p-1 text-xs dark:bg-slate-800">
+          <button
+            type="button"
+            onClick={() => setMode("basic")}
+            className={`rounded px-3 py-1.5 ${
+              mode === "basic"
+                ? "bg-white shadow-sm dark:bg-slate-700"
+                : "text-slate-500"
+            }`}
+          >
+            🔒 Cơ bản
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("advanced")}
+            className={`rounded px-3 py-1.5 ${
+              mode === "advanced"
+                ? "bg-white shadow-sm dark:bg-slate-700"
+                : "text-slate-500"
+            }`}
+          >
+            🛠️ Nâng cao
+          </button>
+        </div>
+      </div>
+      {mode === "basic" && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-700/40 dark:bg-blue-900/10 dark:text-blue-200">
+          Chế độ Cơ bản: chỉ cần chọn niche + preset sản phẩm, prompt kỹ thuật được lock đảm bảo
+          AI sinh đúng spec POD (transparent bg, no watermark, no text artifact). Bật{" "}
+          <b>Nâng cao</b> nếu muốn sửa style prompt thủ công.
+        </div>
+      )}
 
       <div className="card space-y-4 p-5">
         <div>
@@ -120,10 +194,12 @@ export default function NewCampaignPage() {
             <label className="label">Niche / từ khoá gốc</label>
             <input className="input" value={form.niche} onChange={(e) => setForm({ ...form, niche: e.target.value })} />
           </div>
-          <div>
-            <label className="label">Phong cách design (prompt style)</label>
-            <input className="input" value={form.style_prompt} onChange={(e) => setForm({ ...form, style_prompt: e.target.value })} />
-          </div>
+          {mode === "advanced" && (
+            <div>
+              <label className="label">Phong cách design (prompt style)</label>
+              <input className="input" value={form.style_prompt} onChange={(e) => setForm({ ...form, style_prompt: e.target.value })} />
+            </div>
+          )}
         </div>
 
         <div>
@@ -239,9 +315,56 @@ export default function NewCampaignPage() {
           </div>
           <div>
             <label className="label">Giá (USD)</label>
-            <input type="number" step="0.01" className="input"
+            <input type="number" step="0.01" min={0} className="input"
               value={form.base_price_usd}
               onChange={(e) => setForm({ ...form, base_price_usd: Number(e.target.value) })} />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Để 0 = dùng giá đề xuất theo từng loại sản phẩm (tee $19.99, hoodie $42.99, poster $29.99...)
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Loại sản phẩm</label>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            1 design = N listing — chọn càng nhiều loại, càng nhiều tiền 💰. Dùng preset để chọn nhanh.
+          </p>
+          <div className="mb-2 flex flex-wrap gap-2">
+            {Object.entries(presets).map(([pid, p]) => (
+              <button
+                key={pid}
+                type="button"
+                onClick={() => applyPreset(pid)}
+                className="rounded-full bg-slate-100 px-3 py-1 text-xs hover:bg-brand-500 hover:text-white dark:bg-slate-800 dark:text-slate-300"
+                title={p.description}
+              >
+                {p.label} ({p.ids.length})
+              </button>
+            ))}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {catalog.map((b) => {
+              const on = form.product_types.includes(b.id);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => toggle("product_types", b.id)}
+                  className={`rounded-lg p-2 text-left text-xs transition ${
+                    on
+                      ? "bg-brand-500 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <div className="font-semibold">{b.label}</div>
+                  <div
+                    className={`mt-0.5 ${on ? "text-white/80" : "text-slate-500 dark:text-slate-400"}`}
+                  >
+                    Base ${b.base_price_usd} → bán ${b.suggested_retail_usd}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -264,6 +387,55 @@ export default function NewCampaignPage() {
               );
             })}
           </div>
+        </div>
+
+        {accounts.length > 0 && (
+          <div>
+            <label className="label">Shop đích (để trống = đăng vào shop đầu tiên active của mỗi platform)</label>
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+              Strategy khuyến nghị: 1 shop = 1 niche. Chọn cụ thể shop nào nhận campaign này.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {accounts.map((a) => {
+                const on = form.target_account_ids.includes(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => toggleAccount(a.id)}
+                    className={`rounded-lg p-2 text-left text-xs transition ${
+                      on
+                        ? "bg-brand-500 text-white"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    <div className="font-semibold">
+                      {a.label} <span className="opacity-70">({a.platform})</span>
+                    </div>
+                    <div className={on ? "text-white/80" : "text-slate-500 dark:text-slate-400"}>
+                      Shop ID: {a.shop_id || "—"}
+                      {a.has_credentials ? "" : " · ⚠ chưa có API key"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/40">
+          <input
+            id="seo_auto"
+            type="checkbox"
+            checked={form.seo_auto}
+            onChange={(e) => setForm({ ...form, seo_auto: e.target.checked })}
+          />
+          <label htmlFor="seo_auto" className="flex-1 cursor-pointer">
+            <span className="font-semibold">Tự sinh SEO theo từng product</span>
+            <span className="ml-1 text-xs text-slate-500 dark:text-slate-400">
+              (Gemini text → tiêu đề ≤140 ký tự + 13 tags + description Etsy-friendly)
+            </span>
+          </label>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

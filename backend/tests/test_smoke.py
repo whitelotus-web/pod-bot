@@ -90,3 +90,73 @@ def test_engine_accepts_override_key():
 
     eng = get_engine("gemini", api_key="fake")
     assert eng.api_key_override == "fake"
+
+
+def test_catalog_blueprints_and_presets():
+    from app.services.catalog import CATALOG, PRESETS, get_blueprint, list_catalog
+
+    assert len(CATALOG) >= 6
+    ids = {b.id for b in CATALOG}
+    assert {"tshirt_unisex", "hoodie", "mug_11oz", "tote_bag", "poster"} <= ids
+    for preset in ("top_sellers", "apparel", "lifestyle", "tshirt_only"):
+        assert preset in PRESETS
+        # Every id referenced by a preset must exist in catalog
+        for pid in PRESETS[preset]["ids"]:
+            assert get_blueprint(pid) is not None
+    # Listing endpoint serializes correctly
+    serialized = list_catalog()
+    assert all("id" in p and "label" in p and "platform_blueprint" in p for p in serialized)
+
+
+def test_seo_fallback_template_shape():
+    from app.services.seo import generate_seo
+
+    out = generate_seo(
+        keyword="cat",
+        niche="cat lovers",
+        product_id="tshirt_unisex",
+        user_id=None,
+        db=None,
+    )
+    assert out.source in ("template", "ai")
+    assert 0 < len(out.title) <= 140
+    assert len(out.tags) == 13
+    assert all(len(t) <= 20 for t in out.tags)
+    assert "cat" in out.description.lower()
+
+
+def test_ai_router_quota_detection():
+    from app.services.ai_router import is_quota_error
+
+    assert is_quota_error(Exception("HTTP 429 too many requests"))
+    assert is_quota_error(Exception("Quota exceeded for project"))
+    assert is_quota_error(Exception("insufficient_quota: please add billing"))
+    assert not is_quota_error(Exception("invalid api key"))
+    assert not is_quota_error(Exception("connection refused"))
+
+
+def test_ai_router_role_engines_disjoint():
+    from app.services.ai_router import ROLE_ENGINES
+
+    # Image gen must include the heavy engines; text roles must NOT include replicate
+    assert "replicate" in ROLE_ENGINES["image_generation"]
+    assert "replicate" not in ROLE_ENGINES["seo_writer"]
+    assert "replicate" not in ROLE_ENGINES["keyword_expansion"]
+
+
+def test_bg_remove_threshold_fallback(tmp_path):
+    from PIL import Image
+
+    from app.services.bg_remove import _threshold_fallback
+
+    src = tmp_path / "white_disk.png"
+    img = Image.new("RGB", (8, 8), (255, 255, 255))
+    img.putpixel((4, 4), (255, 0, 0))
+    img.save(src, "PNG")
+    out = _threshold_fallback(src, tmp_path / "out.png")
+    assert out.exists()
+    rgba = Image.open(out).convert("RGBA")
+    # White corner is now transparent
+    assert rgba.getpixel((0, 0))[3] == 0
+    # Red center stays opaque
+    assert rgba.getpixel((4, 4))[3] == 255

@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
+  Bell,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -12,6 +14,8 @@ import {
   Plug,
   Search,
   Settings,
+  Shield,
+  Sparkles,
 } from "lucide-react";
 import { clearToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -24,6 +28,10 @@ const NAV = [
   { href: "/designs", label: "Designs", icon: Palette },
   { href: "/products", label: "Sản phẩm", icon: Package },
   { href: "/platforms", label: "Platform", icon: Plug },
+  { href: "/templates", label: "Prompt Templates", icon: Sparkles },
+  { href: "/trademark", label: "Trademark Shield", icon: Shield },
+  { href: "/health", label: "Account Health", icon: Activity },
+  { href: "/notifications", label: "Thông báo", icon: Bell },
   { href: "/settings/ai", label: "AI Keys", icon: KeyRound },
   { href: "/runs", label: "Run logs", icon: ListChecks },
   { href: "/settings", label: "Cài đặt", icon: Settings },

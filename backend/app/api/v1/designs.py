@@ -27,11 +27,13 @@ def list_designs(
 def approve_design(
     design_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),  # noqa: ARG001
+    user: User = Depends(get_current_user),
 ) -> dict:
     d = db.get(Design, design_id)
     if not d:
         raise HTTPException(404, "Không tìm thấy design")
+    if d.campaign and d.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
     d.status = "approved"
     db.commit()
     return {"ok": True}
@@ -41,11 +43,13 @@ def approve_design(
 def reject_design(
     design_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),  # noqa: ARG001
+    user: User = Depends(get_current_user),
 ) -> dict:
     d = db.get(Design, design_id)
     if not d:
         raise HTTPException(404, "Không tìm thấy design")
+    if d.campaign and d.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
     d.status = "rejected"
     db.commit()
     return {"ok": True}
@@ -59,21 +63,24 @@ def regenerate_design(
 ) -> DesignRead:
     """Re-run the AI engine with the same prompt and replace the image file.
 
-    Useful in semi-auto review mode when a user doesn't like the first output
-    but wants to keep prompt + metadata.
+    Uses the role-aware key router so quota errors automatically rotate to the
+    next available key (same engine first, then sibling engines).
     """
     from pathlib import Path
 
     from app.core.config import settings
-    from app.services.ai.base import get_engine_for_user
+    from app.services.ai_router import safe_generate_image
 
     d = db.get(Design, design_id)
     if not d:
         raise HTTPException(404, "Không tìm thấy design")
+    if d.campaign and d.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
 
-    engine = get_engine_for_user(d.engine, user.id, db)
     try:
-        img = engine.generate(d.prompt, model=d.model)
+        img = safe_generate_image(
+            db, user_id=user.id, engine_pref=d.engine, prompt=d.prompt, model=d.model
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"AI generate failed: {exc}") from exc
 
@@ -81,6 +88,36 @@ def regenerate_design(
     fpath.parent.mkdir(parents=True, exist_ok=True)
     fpath.write_bytes(img.image_bytes)
     d.status = "ready"
+    d.bg_removed_path = None  # invalidate any prior bg-removed copy
+    db.commit()
+    db.refresh(d)
+    return DesignRead.model_validate(d)
+
+
+@router.post("/{design_id}/remove-bg", response_model=DesignRead)
+def remove_bg(
+    design_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> DesignRead:
+    """Run background-removal (rembg + alpha threshold fallback) on a design."""
+    from pathlib import Path
+
+    from app.core.config import settings
+    from app.services.bg_remove import remove_background
+
+    d = db.get(Design, design_id)
+    if not d:
+        raise HTTPException(404, "Không tìm thấy design")
+    if d.campaign and d.campaign.user_id != user.id:
+        raise HTTPException(403, "Không có quyền")
+
+    src = Path(settings.media_root) / d.file_path
+    try:
+        out = remove_background(src, src.with_name(src.stem + "_nobg.png"))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"BG removal failed: {exc}") from exc
+    d.bg_removed_path = str(out.relative_to(settings.media_root))
     db.commit()
     db.refresh(d)
     return DesignRead.model_validate(d)

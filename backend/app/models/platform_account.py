@@ -1,7 +1,7 @@
 """Credential/OAuth record per POD platform per user."""
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -25,6 +25,22 @@ class PlatformAccount(Base):
     access_token: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     refresh_token: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Multi-account fingerprint isolation (one shop per IP/UA pattern)
+    proxy_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    # Warm-up: cap publishes/day; override age (for migrated existing accounts)
+    account_age_days_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    daily_publish_cap_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    today_publish_count: Mapped[int] = mapped_column(Integer, default=0)
+    today_publish_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Health monitor
+    health_status: Mapped[str] = mapped_column(String(32), default="healthy")  # healthy|warn|paused|banned
+    health_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Misc
     extra: Mapped[dict | None] = mapped_column(JSON, default=dict, nullable=True)

@@ -27,11 +27,28 @@ class Campaign(Base):
 
     # --- Mockup + Product ---
     product_types: Mapped[list] = mapped_column(JSON, default=list)  # ["tshirt","hoodie"]
-    base_price_usd: Mapped[float] = mapped_column(default=19.99)
+    # 0 = "use catalog suggested price"; >0 = user-intentional override.
+    base_price_usd: Mapped[float] = mapped_column(default=0.0)
 
     # --- Auto-publish ---
     auto_mode: Mapped[str] = mapped_column(String(16), default="semi")  # semi | full
     target_platforms: Mapped[list] = mapped_column(JSON, default=list)  # ["printify","etsy"]
+    # Specific platform_account.id rows to publish into. Empty list = first active per platform.
+    target_account_ids: Mapped[list] = mapped_column(JSON, default=list)
+    seo_auto: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Quality / risk gates
+    quality_gates_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    vision_qa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    trademark_check_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    uspto_check_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Upscaling for print-ready DPI (Printify wants ≥4500x5400)
+    upscale_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    upscale_min_long_edge: Mapped[int] = mapped_column(Integer, default=4500)
+
+    # Prompt template ids — empty list = let pipeline pick by family round-robin
+    prompt_template_ids: Mapped[list] = mapped_column(JSON, default=list)
 
     # --- Schedule ---
     schedule_cron: Mapped[str | None] = mapped_column(String(64), nullable=True)  # "0 3 * * *"
