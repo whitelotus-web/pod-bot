@@ -14,3 +14,5 @@ class KeywordRead(BaseModel):
     rank: int
     raw: dict[str, Any] | None = None
     fetched_at: datetime
+    intent: str | None = None
+    intent_score: float = 0.0

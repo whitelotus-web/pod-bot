@@ -156,3 +156,99 @@ def account_health_sweep() -> dict:
         return {"unpaused": unpaused, "recovered": recovered}
     finally:
         db.close()
+
+
+@celery_app.task(name="app.workers.scheduler.retry_pending_publishes")
+def retry_pending_publishes(limit: int = 50) -> dict:
+    """Re-attempt publishes that were queued by the retry-queue.
+
+    Picks up ``Product`` rows with ``status='pending_retry'`` and
+    ``next_retry_at <= now``, in oldest-first order, and re-runs the
+    platform publish call. On success, updates the row in place. On a new
+    transient failure, schedules the next backoff step. On a hard failure
+    (or after exhausting the ladder) marks the row as ``failed_terminal``.
+    """
+    from app.models import Design, PlatformAccount, Product
+    from app.platforms import get_platform
+    from app.services.retry_queue import (
+        is_transient,
+        mark_published,
+        mark_terminal,
+        schedule_retry,
+    )
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(UTC)
+        rows: list[Product] = (
+            db.query(Product)
+            .filter(
+                Product.status == "pending_retry",
+                Product.next_retry_at <= now,
+            )
+            .order_by(Product.next_retry_at.asc())
+            .limit(limit)
+            .all()
+        )
+        attempted = 0
+        retried = 0
+        succeeded = 0
+        terminal = 0
+        for p in rows:
+            attempted += 1
+            account = db.query(PlatformAccount).filter_by(id=p.platform_account_id).first()
+            design = db.query(Design).filter_by(id=p.design_id).first() if p.design_id else None
+            if account is None or design is None:
+                mark_terminal(p, RuntimeError("missing account or design"))
+                terminal += 1
+                continue
+            if account.health_status in ("paused", "banned") or (
+                account.paused_until is not None and account.paused_until > now
+            ):
+                # Don't retry into a paused shop — push the next attempt back
+                # one full ladder step so we don't busy-loop.
+                schedule_retry(p, RuntimeError(f"account {account.id} still paused"))
+                continue
+            try:
+                from pathlib import Path as _Path
+
+                from app.core.config import settings as _settings
+
+                src_rel = design.upscaled_path or design.bg_removed_path or design.file_path
+                design_abs = str(_Path(_settings.media_root) / src_rel)
+                adapter = get_platform(account.platform, account)
+                res = adapter.publish(
+                    design_path=design_abs,
+                    title=p.title,
+                    description=p.description,
+                    tags=p.tags or [],
+                    price_usd=p.price_usd,
+                    product_type=p.product_type,
+                )
+                if res.status == "published":
+                    p.status = "published"
+                    p.external_id = res.external_id
+                    p.url = res.url
+                    p.error = None
+                    p.published_at = datetime.now(UTC)
+                    mark_published(p)
+                    succeeded += 1
+                else:
+                    p.error = res.error or "non-published response"
+                    p.status = "failed_terminal"
+                    terminal += 1
+            except Exception as exc:  # noqa: BLE001
+                if is_transient(exc) and schedule_retry(p, exc):
+                    retried += 1
+                else:
+                    mark_terminal(p, exc)
+                    terminal += 1
+        db.commit()
+        return {
+            "attempted": attempted,
+            "succeeded": succeeded,
+            "retried": retried,
+            "terminal": terminal,
+        }
+    finally:
+        db.close()

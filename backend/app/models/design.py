@@ -41,6 +41,10 @@ class Design(Base):
     template_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # AI generation + upscale total billed cost (Wave 5). Set by the pipeline
+    # after a successful generate; consumed by services/pnl.py.
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     campaign = relationship("Campaign")

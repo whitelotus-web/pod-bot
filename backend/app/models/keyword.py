@@ -29,6 +29,10 @@ class Keyword(Base):
     breakout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejected_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
+    # Buyer-intent classifier output (Wave 5)
+    intent: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    intent_score: Mapped[float] = mapped_column(Float, default=0.0)
+
     campaign = relationship("Campaign")
 
 

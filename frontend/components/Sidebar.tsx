@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   Bell,
+  DollarSign,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -27,6 +28,7 @@ const NAV = [
   { href: "/keywords", label: "Keyword", icon: Search },
   { href: "/designs", label: "Designs", icon: Palette },
   { href: "/products", label: "Sản phẩm", icon: Package },
+  { href: "/pnl", label: "P&L", icon: DollarSign },
   { href: "/platforms", label: "Platform", icon: Plug },
   { href: "/templates", label: "Prompt Templates", icon: Sparkles },
   { href: "/trademark", label: "Trademark Shield", icon: Shield },
