@@ -13,6 +13,7 @@ from app.api.v1 import (
     momentum,
     notifications,
     platforms,
+    pnl,
     pricing,
     products,
     prompts,
@@ -44,3 +45,4 @@ api_router.include_router(branding.router, prefix="/branding", tags=["branding"]
 api_router.include_router(momentum.router, prefix="/momentum", tags=["momentum"])
 api_router.include_router(pricing.router, prefix="/pricing", tags=["pricing"])
 api_router.include_router(health_accounts.router, prefix="/health", tags=["health"])
+api_router.include_router(pnl.router, prefix="/pnl", tags=["pnl"])

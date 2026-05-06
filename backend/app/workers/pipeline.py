@@ -169,10 +169,16 @@ def _upscale_design(db, campaign: Campaign, design: Design) -> None:
     out = src.with_name(src.stem + "_print.png")
     try:
         res = upscale_design(src, out_path=out, min_long_edge=target)
+        from app.services.pnl import cost_for_upscale
+
         design.upscaled_path = str(Path(res.output_path).relative_to(settings.media_root))
         design.upscale_backend = res.backend
         design.print_width = res.width
         design.print_height = res.height
+        # Upscale is metered separately from generation (Replicate billed
+        # per-call, local backends free) so we *add* to the existing
+        # generation cost instead of overwriting it.
+        design.cost_usd = float(design.cost_usd or 0) + cost_for_upscale(res.backend)
         db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("upscale failed for design #%s: %s", design.id, exc)
@@ -198,19 +204,27 @@ def _quality_gate(db, campaign: Campaign, design: Design) -> bool:
 
 
 def _fetch_keywords(db, campaign: Campaign) -> list[Keyword]:
+    from app.services.buyer_intent import apply_intent_to_terms
+
     sources = campaign.keyword_sources or ["google_trends"]
     agg = KeywordAggregator(source_names=sources)
     terms = agg.run(campaign.niche or campaign.name, top=campaign.designs_per_keyword * 4)
+    # Annotate + reweight by buyer intent so gift/personal keywords float to
+    # the top of the rank ahead of decorative/informational ones.
+    terms = apply_intent_to_terms(terms, db=db, user_id=campaign.user_id, use_ai=False)
 
     saved: list[Keyword] = []
     for rank, t in enumerate(terms, start=1):
+        raw = t.raw or {}
         kw = Keyword(
             campaign_id=campaign.id,
             term=t.term,
             source=t.source,
             score=t.score,
             rank=rank,
-            raw=t.raw,
+            raw=raw,
+            intent=raw.get("intent"),
+            intent_score=float(raw.get("intent_score") or 0.0),
         )
         db.add(kw)
         saved.append(kw)
@@ -245,6 +259,8 @@ def _generate_designs(db, campaign: Campaign, keyword: Keyword) -> list[Design]:
         fname = f"{campaign.id}_{keyword.id}_{i}_{slugify(keyword.term)[:40]}.png"
         fpath = Path(settings.media_root, "designs", fname)
         fpath.write_bytes(img.image_bytes)
+        from app.services.pnl import cost_for_engine
+
         design = Design(
             campaign_id=campaign.id,
             keyword_id=keyword.id,
@@ -254,6 +270,7 @@ def _generate_designs(db, campaign: Campaign, keyword: Keyword) -> list[Design]:
             model=img.model,
             file_path=str(fpath.relative_to(settings.media_root)),
             status="ready",
+            cost_usd=cost_for_engine(campaign.ai_engine),
         )
         db.add(design)
         out.append(design)
@@ -512,6 +529,10 @@ def _publish_one(
     # uploaded image meets Printify's 300 DPI / 4500x5400 requirement.
     src_rel = design.upscaled_path or design.bg_removed_path or design.file_path
     design_abs = str(Path(settings.media_root) / src_rel)
+    publish_blueprint = get_blueprint(product_id)
+    # ``base_price_usd`` on a blueprint is the wholesale floor we pay the POD
+    # provider per unit — that's the per-product COST for P&L accounting.
+    base_cost = float(getattr(publish_blueprint, "base_price_usd", 0.0) or 0.0)
     try:
         adapter = get_platform(account.platform, account)
         res = adapter.publish(
@@ -533,6 +554,7 @@ def _publish_one(
                 description=description,
                 tags=tags,
                 price_usd=price,
+                cost_usd=base_cost,
                 status=res.status,
                 error=res.error,
                 published_at=datetime.now(UTC) if res.status == "published" else None,
@@ -542,21 +564,62 @@ def _publish_one(
             _bump_warmup_counter(account)
         db.commit()
     except Exception as exc:  # noqa: BLE001
-        logger.exception("Publish failed: %s", exc)
-        db.add(
-            Product(
-                design_id=design.id,
-                platform_account_id=account.id,
-                product_type=product_id,
-                title=title,
-                description=description,
-                tags=tags,
-                price_usd=price,
-                status="failed",
-                error=str(exc)[:500],
-            )
+        product = _build_failed_product(
+            design=design,
+            account=account,
+            product_id=product_id,
+            title=title,
+            description=description,
+            tags=tags,
+            price=price,
+            base_cost=base_cost,
+            exc=exc,
         )
+        db.add(product)
         db.commit()
+
+
+def _build_failed_product(
+    *,
+    design: Design,
+    account: PlatformAccount,
+    product_id: str,
+    title: str,
+    description: str,
+    tags: list,
+    price: float,
+    base_cost: float,
+    exc: BaseException,
+) -> Product:
+    """Build a Product row for a publish failure, deciding retry vs terminal.
+
+    Transient errors (429 / 5xx / network blip) enter the retry queue and the
+    row is created with ``status='pending_retry'`` + ``next_retry_at`` set.
+    Hard failures (auth / validation / trademark) get ``status='failed'`` so
+    the user sees them immediately.
+    """
+    from app.services.retry_queue import is_transient, schedule_retry
+
+    product = Product(
+        design_id=design.id,
+        platform_account_id=account.id,
+        product_type=product_id,
+        title=title,
+        description=description,
+        tags=tags,
+        price_usd=price,
+        cost_usd=base_cost,
+        status="failed",
+        error=str(exc)[:500],
+    )
+    if is_transient(exc) and schedule_retry(product, exc):
+        logger.warning(
+            "Publish transient error on design #%s — queued for retry %d (next_retry_at=%s)",
+            design.id, product.retry_count, product.next_retry_at,
+        )
+    else:
+        logger.exception("Publish failed (terminal): %s", exc)
+    return product
 
 
 def _bump_warmup_counter(account: PlatformAccount) -> None:

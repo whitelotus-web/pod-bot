@@ -24,8 +24,19 @@ class Product(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[list] = mapped_column(JSON, default=list)
     price_usd: Mapped[float] = mapped_column(default=19.99)
-    status: Mapped[str] = mapped_column(String(32), default="draft")  # draft|published|failed
+    status: Mapped[str] = mapped_column(String(32), default="draft")
+    # ^ draft | published | pending_retry | failed | failed_terminal
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Retry queue bookkeeping (Wave 5)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    next_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_retry_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Per-product wholesale cost (Wave 5) — used by /pnl P&L aggregation.
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Lifecycle metrics (synced from platform webhooks)
     views_count: Mapped[int] = mapped_column(Integer, default=0)

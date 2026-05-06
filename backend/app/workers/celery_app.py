@@ -43,4 +43,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.scheduler.account_health_sweep",
         "schedule": crontab(minute=15),
     },
+    # Every 10 min: re-attempt publishes that hit a transient platform error
+    # (429 / 5xx / network blip) and were parked in the retry-queue.
+    "retry-pending-publishes": {
+        "task": "app.workers.scheduler.retry_pending_publishes",
+        "schedule": crontab(minute="*/10"),
+    },
 }

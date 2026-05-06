@@ -18,7 +18,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
+# Install runtime + dev deps (pytest, ruff, mypy) so the container can run
+# the test suite directly via ``docker compose exec backend python -m pytest``
+# without needing an ad-hoc ``pip install`` per session.
+RUN pip install --upgrade pip && pip install ".[dev]"
 
 COPY . .
 
