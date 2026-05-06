@@ -28,6 +28,21 @@ from app.services.audit import log_action
 router = APIRouter()
 
 
+class StatusResponse(BaseModel):
+    two_factor_enabled: bool
+    enrolled: bool
+
+
+@router.get("/status", response_model=StatusResponse)
+def status_(
+    user: User = Depends(get_current_user),
+) -> StatusResponse:
+    return StatusResponse(
+        two_factor_enabled=bool(user.two_factor_enabled),
+        enrolled=bool(user.totp_secret_encrypted),
+    )
+
+
 class EnrollResponse(BaseModel):
     secret: str = Field(..., description="Plaintext base32 secret. Show only once.")
     otpauth_uri: str
