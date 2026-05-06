@@ -53,7 +53,10 @@ jobs:
           node-version: "20"
       - name: Install deps
         working-directory: frontend
-        run: npm ci || npm install
+        # eslint-config-next@14 pins eslint ^8 but the lockfile may resolve a
+        # newer eslint via transitive deps. --legacy-peer-deps tolerates the
+        # mismatch and matches what `npm install` does locally.
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
       - name: Lint
         working-directory: frontend
         run: npm run lint --if-present || echo "no lint script"
