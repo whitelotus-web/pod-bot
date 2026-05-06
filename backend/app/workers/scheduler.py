@@ -255,3 +255,84 @@ def retry_pending_publishes(limit: int = 50) -> dict:
         }
     finally:
         db.close()
+
+
+@celery_app.task(name="app.workers.scheduler.poll_reviews")
+def poll_reviews() -> dict:
+    """Poll every active platform account for new reviews."""
+    from app.models import PlatformAccount
+    from app.services.reviews import poll_account
+
+    db = SessionLocal()
+    try:
+        accounts = db.query(PlatformAccount).filter_by(is_active=True).all()
+        total_new = 0
+        total_alerts = 0
+        for acc in accounts:
+            try:
+                result = poll_account(db, acc)
+            except Exception:  # noqa: BLE001
+                continue
+            total_new += int(result.get("new_reviews") or 0)
+            total_alerts += int(result.get("low_rating_alerts") or 0)
+        return {"new_reviews": total_new, "low_rating_alerts": total_alerts}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.scheduler.ingest_etsy_ads")
+def ingest_etsy_ads() -> dict:
+    """Pull yesterday's Etsy Ads spend per Etsy account, attribute to products."""
+    from app.models import PlatformAccount
+    from app.services.etsy_ads import attribute_to_products, fetch_daily_ads_spend
+
+    db = SessionLocal()
+    try:
+        accounts = (
+            db.query(PlatformAccount)
+            .filter_by(platform="etsy", is_active=True)
+            .all()
+        )
+        ingested = 0
+        total_spend = 0.0
+        for acc in accounts:
+            data = fetch_daily_ads_spend(acc)
+            if data is None:
+                continue
+            spend = float(data.get("spend_usd") or 0)
+            if spend <= 0:
+                continue
+            attribute_to_products(db, acc, spend_usd=spend)
+            total_spend += spend
+            ingested += 1
+        return {"accounts": ingested, "total_spend_usd": round(total_spend, 2)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.scheduler.ab_test_winner_check")
+def ab_test_winner_check(min_orders_per_variant: int = 5) -> dict:
+    """Walk every active A/B group and conclude winners when ready."""
+    from app.models import Campaign
+    from app.services.ab_test import pick_winner
+
+    db = SessionLocal()
+    try:
+        active_groups = (
+            db.query(Campaign.ab_test_group)
+            .filter(
+                Campaign.ab_test_group.is_not(None),
+                Campaign.ab_test_concluded_at.is_(None),
+            )
+            .distinct()
+            .all()
+        )
+        decided = 0
+        for (group_id,) in active_groups:
+            if group_id and pick_winner(
+                db, group_id, min_orders_per_variant=min_orders_per_variant
+            ):
+                decided += 1
+        return {"groups_checked": len(active_groups), "winners_picked": decided}
+    finally:
+        db.close()

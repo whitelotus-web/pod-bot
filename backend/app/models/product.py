@@ -43,6 +43,18 @@ class Product(Base):
     clicks_count: Mapped[int] = mapped_column(Integer, default=0)
     orders_count: Mapped[int] = mapped_column(Integer, default=0)
     revenue_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    # Refund tracking (Wave 7) — refunded amount + count, subtracted from net revenue.
+    refunds_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    refunds_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Platform fees we've paid against this product (Etsy listing + transaction
+    # + payment processing + ads). Pre-aggregated so P&L doesn't have to walk
+    # individual transaction rows for every dashboard request.
+    platform_fees_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    ads_spend_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    # A/B test linkage — copied from owning campaign at publish time so we
+    # can group by variant in dashboards without joining campaigns every read.
+    ab_test_group: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    ab_variant_label: Mapped[str | None] = mapped_column(String(16), nullable=True)
     ctr: Mapped[float] = mapped_column(Float, default=0.0)
     last_metrics_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     lifecycle_stage: Mapped[str] = mapped_column(String(32), default="active")

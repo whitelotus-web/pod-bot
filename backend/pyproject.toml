@@ -30,6 +30,8 @@ dependencies = [
     "tenacity>=9.0.0",
     "croniter>=3.0.3",
     "email-validator>=2.2.0",
+    "slowapi>=0.1.9",
+    "sentry-sdk[fastapi]>=2.13.0",
 ]
 
 [project.optional-dependencies]

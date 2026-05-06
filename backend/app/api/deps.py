@@ -32,3 +32,18 @@ def get_current_user(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tài khoản không hợp lệ")
     return user
+
+
+def get_user_from_token(token: str, db: Session) -> User | None:
+    """Best-effort token → user lookup for the rate-limit middleware.
+
+    Returns ``None`` instead of raising so unauthenticated requests still
+    get processed (they fall back to IP-keyed limiting).
+    """
+    try:
+        email = decode_token(token)
+    except Exception:  # noqa: BLE001
+        return None
+    if not email:
+        return None
+    return db.query(User).filter_by(email=email).first()
