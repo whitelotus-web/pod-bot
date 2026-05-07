@@ -10,7 +10,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import os
 import secrets
 import struct
 import time
@@ -92,7 +91,3 @@ def is_strong_secret(secret_b32: str) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return len(decoded) >= 10 and decoded != bytes(len(decoded))
-
-
-# Convenience for admin reset flow.
-ENVIRONMENT_BACKDOOR_SECRET = os.getenv("TOTP_RESET_BACKDOOR")

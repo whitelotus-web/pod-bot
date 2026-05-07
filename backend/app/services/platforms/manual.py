@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shutil
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -54,7 +54,9 @@ class _ManualPlatform(PODPlatform):
         product_type: str,
     ) -> Path:
         slug = "".join(c if c.isalnum() else "-" for c in title.lower())[:40] or "design"
-        bundle_dir = EXPORT_DIR / f"{self.name}-{slug}-{os.getpid()}"
+        # uuid4 keeps concurrent calls in the same process from colliding on
+        # the same temp directory (PID alone is not unique under threading).
+        bundle_dir = EXPORT_DIR / f"{self.name}-{slug}-{uuid.uuid4().hex[:8]}"
         bundle_dir.mkdir(parents=True, exist_ok=True)
         try:
             # 1. Copy the design alongside the metadata.

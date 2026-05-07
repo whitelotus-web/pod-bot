@@ -100,13 +100,20 @@ def export_data(
         "exported_at": __import__("datetime").datetime.now(
             __import__("datetime").UTC
         ).isoformat(),
-        "user": _row_to_dict(user) | {"hashed_password": "[REDACTED]"},
+        "user": _row_to_dict(user)
+        | {
+            "hashed_password": "[REDACTED]",
+            "totp_secret_encrypted": "[REDACTED]" if user.totp_secret_encrypted else None,
+        },
         "platform_accounts": [
             _row_to_dict(a)
             | {
                 "api_key": mask(a.api_key or ""),
                 "access_token": mask(a.access_token or ""),
                 "refresh_token": mask(a.refresh_token or ""),
+                # proxy_url may embed credentials as https://user:pass@host —
+                # mask wholesale rather than try to parse.
+                "proxy_url": mask(a.proxy_url or "") if a.proxy_url else None,
             }
             for a in accounts
         ],
