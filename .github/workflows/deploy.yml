@@ -35,8 +35,11 @@ jobs:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
 
       - name: Pull + rebuild + restart on VPS
+        # Unquoted heredoc so the runner expands $VPS_DEPLOY_PATH before
+        # piping to SSH; with <<'EOF' the variable would be unbound on the
+        # remote shell under `set -u`.
         run: |
-          ssh "$VPS_USER@$VPS_HOST" bash -s <<'EOF'
+          ssh "$VPS_USER@$VPS_HOST" bash -s <<EOF
             set -euo pipefail
             cd "$VPS_DEPLOY_PATH"
             git fetch origin base

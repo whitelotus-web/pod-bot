@@ -67,6 +67,13 @@ def enroll(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> EnrollResponse:
+    if user.two_factor_enabled:
+        # Re-enrolling without a current code would let a stolen bearer token
+        # silently turn 2FA off. Force an explicit /disable round-trip first.
+        raise HTTPException(
+            status_code=400,
+            detail="2FA đang bật. Tắt trước (cần mã hiện tại) rồi enroll lại.",
+        )
     secret = totp.generate_secret()
     user.totp_secret_encrypted = encrypt(secret)
     user.two_factor_enabled = False

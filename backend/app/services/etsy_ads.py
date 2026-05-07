@@ -100,9 +100,15 @@ def attribute_to_products(
     )
     if not products or spend_usd <= 0:
         return 0
-    total_orders = sum(int(p.orders_count or 0) for p in products) or len(products)
+    total_orders = sum(int(p.orders_count or 0) for p in products)
+    n = len(products)
     for p in products:
-        weight = (int(p.orders_count or 0) or 1) / total_orders
+        if total_orders > 0:
+            # Proportional split — products with zero orders get nothing.
+            weight = int(p.orders_count or 0) / total_orders
+        else:
+            # No order signal yet — split evenly across products.
+            weight = 1 / n
         p.ads_spend_usd = float(p.ads_spend_usd or 0) + spend_usd * weight
     db.commit()
     return len(products)
