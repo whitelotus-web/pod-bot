@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +12,9 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.types import ASGIApp
 
 from app.api.v1 import api_router
 from app.core.config import settings
@@ -29,11 +32,50 @@ _sentry_active = init_sentry()
 
 app = FastAPI(title=settings.app_name, version="0.2.0")
 
+
+class AttachUserMiddleware(BaseHTTPMiddleware):
+    """Best-effort decode of the bearer token so rate-limit keys can be per-user.
+
+    Implemented as a proper ``BaseHTTPMiddleware`` subclass (rather than the
+    ``@app.middleware('http')`` decorator) so it can be registered via
+    ``app.add_middleware()`` AFTER ``SlowAPIMiddleware``. In Starlette the
+    last-added middleware ends up the outermost layer, so this ordering
+    guarantees ``request.state.user`` is set BEFORE SlowAPI reads the
+    rate-limit key. Failures here are swallowed so unauthenticated endpoints
+    (login, healthcheck) still work — they fall back to IP-based limiting.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        super().__init__(app)
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            from app.api.deps import get_user_from_token
+
+            auth = request.headers.get("authorization") or ""
+            if auth.lower().startswith("bearer "):
+                token = auth.split(" ", 1)[1].strip()
+                db = SessionLocal()
+                try:
+                    user = get_user_from_token(token, db)
+                    if user is not None:
+                        request.state.user = user
+                finally:
+                    db.close()
+        except Exception:  # noqa: BLE001
+            pass
+        return await call_next(request)
+
+
 # Rate limiter — must be installed before any router that uses ``@limiter``.
+# Order matters: ``add_middleware`` prepends, so the last-added wraps the
+# previously-added ones. We need ``AttachUserMiddleware`` to run BEFORE
+# ``SlowAPIMiddleware`` so ``request.state.user`` is populated when slowapi
+# computes its key. Therefore SlowAPI is added first, then CORS, then
+# AttachUser — making AttachUser the outermost layer.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -41,6 +83,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AttachUserMiddleware)
 
 app.include_router(api_router)
 
@@ -103,33 +146,6 @@ def health_ready() -> JSONResponse:
         {"status": "ready" if ok else "degraded", "checks": checks},
         status_code=200 if ok else 503,
     )
-
-
-# --- Request-scoped user context for the rate limiter -----------------------
-@app.middleware("http")
-async def attach_user_to_state(request: Request, call_next):
-    """Best-effort decode of the bearer token so rate-limit keys can be per-user.
-
-    Any failure leaves ``request.state.user`` unset and rate limiting falls
-    back to the IP-based key. We never raise here because that would block
-    unauthenticated endpoints (login, healthcheck) that don't need a user.
-    """
-    try:
-        from app.api.deps import get_user_from_token
-
-        auth = request.headers.get("authorization") or ""
-        if auth.lower().startswith("bearer "):
-            token = auth.split(" ", 1)[1].strip()
-            db = SessionLocal()
-            try:
-                user = get_user_from_token(token, db)
-                if user is not None:
-                    request.state.user = user
-            finally:
-                db.close()
-    except Exception:  # noqa: BLE001
-        pass
-    return await call_next(request)
 
 
 # --- Bootstrap admin --------------------------------------------------------
