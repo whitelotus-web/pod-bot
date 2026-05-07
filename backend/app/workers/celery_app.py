@@ -49,4 +49,20 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.scheduler.retry_pending_publishes",
         "schedule": crontab(minute="*/10"),
     },
+    # Every 6h: poll Etsy / Printify for new customer reviews and push a
+    # critical notification if a review is ≤ 2 stars.
+    "review-monitor-poll": {
+        "task": "app.workers.scheduler.poll_reviews",
+        "schedule": crontab(minute=30, hour="*/6"),
+    },
+    # Daily 03:00 UTC: pull yesterday's Etsy Ads spend and attribute to listings.
+    "etsy-ads-ingest": {
+        "task": "app.workers.scheduler.ingest_etsy_ads",
+        "schedule": crontab(hour=3, minute=0),
+    },
+    # Daily 04:00 UTC: A/B test winner check on all running groups.
+    "ab-test-winner-check": {
+        "task": "app.workers.scheduler.ab_test_winner_check",
+        "schedule": crontab(hour=4, minute=0),
+    },
 }

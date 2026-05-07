@@ -1,12 +1,14 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    ab_test,
     ai_keys,
     auth,
     branding,
     campaigns,
     catalog,
     designs,
+    gdpr,
     health_accounts,
     keywords,
     mockups,
@@ -22,6 +24,8 @@ from app.api.v1 import (
     seo,
     templates,
     trademark,
+    two_factor,
+    webhooks,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -46,3 +50,7 @@ api_router.include_router(momentum.router, prefix="/momentum", tags=["momentum"]
 api_router.include_router(pricing.router, prefix="/pricing", tags=["pricing"])
 api_router.include_router(health_accounts.router, prefix="/health", tags=["health"])
 api_router.include_router(pnl.router, prefix="/pnl", tags=["pnl"])
+api_router.include_router(two_factor.router, prefix="/two-factor", tags=["two-factor"])
+api_router.include_router(ab_test.router, prefix="/ab-test", tags=["ab-test"])
+api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+api_router.include_router(gdpr.router, prefix="/gdpr", tags=["gdpr"])

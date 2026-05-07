@@ -1,0 +1,56 @@
+# Auto-deploy template — fires on every push to `base`. Replace the
+# placeholder secrets with the values for your VPS, then enable the
+# workflow by removing the `if: false` guard at the bottom.
+#
+# Required GitHub secrets:
+#   VPS_HOST          — e.g. 1.2.3.4
+#   VPS_USER          — e.g. devin
+#   VPS_SSH_KEY       — private SSH key (Ed25519 recommended)
+#   VPS_DEPLOY_PATH   — e.g. /opt/pod-bot
+#
+# The remote command pulls the latest code and rebuilds + restarts the
+# docker-compose stack. See docs/deploy.md for the matching VPS setup.
+name: Deploy
+
+on:
+  push:
+    branches: [base]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: false  # ← flip to `true` once you've added the secrets above.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ssh key
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Pull + rebuild + restart on VPS
+        # Unquoted heredoc so the runner expands $VPS_DEPLOY_PATH before
+        # piping to SSH; with <<'EOF' the variable would be unbound on the
+        # remote shell under `set -u`.
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" bash -s <<EOF
+            set -euo pipefail
+            cd "$VPS_DEPLOY_PATH"
+            git fetch origin base
+            git reset --hard origin/base
+            docker compose pull || true
+            docker compose build backend frontend worker beat
+            docker compose up -d
+            docker compose exec -T backend alembic upgrade head
+            docker system prune -f
+          EOF
+        env:
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}

@@ -99,7 +99,16 @@ def _product_total_cost_usd(p: Product) -> float:
     """
     revenue_per_order = float(p.cost_usd or 0)
     orders = int(p.orders_count or 0)
-    return orders * revenue_per_order
+    base_cost = orders * revenue_per_order
+    # Wave 7: bake platform fees + ads spend into cost so P&L is honest.
+    platform_fees = float(getattr(p, "platform_fees_usd", 0) or 0)
+    ads_spend = float(getattr(p, "ads_spend_usd", 0) or 0)
+    return base_cost + platform_fees + ads_spend
+
+
+def _net_revenue(p: Product) -> float:
+    """Gross revenue minus refunds (Wave 7)."""
+    return float(p.revenue_usd or 0) - float(getattr(p, "refunds_usd", 0) or 0)
 
 
 # --- Aggregations ------------------------------------------------------------
@@ -138,7 +147,7 @@ def _bucket_sum(rows: list[tuple[str, Product, float]]) -> list[Bucket]:
         lambda: {"revenue": 0.0, "cost": 0.0, "orders": 0, "products": 0}
     )
     for label, p, design_cost in rows:
-        rev = float(p.revenue_usd or 0)
+        rev = _net_revenue(p)
         product_cost = _product_total_cost_usd(p)
         cost = product_cost + design_cost
         bucket = grouped[label]
@@ -213,7 +222,7 @@ def top_winners(db: Session, user_id: int, days: int = 90, n: int = 10) -> list[
     design_share = _attribute_design_cost(products)
     out = []
     for p in products:
-        rev = float(p.revenue_usd or 0)
+        rev = _net_revenue(p)
         cost = _product_total_cost_usd(p) + design_share.get(p.id, 0.0)
         profit = rev - cost
         out.append(
@@ -226,6 +235,7 @@ def top_winners(db: Session, user_id: int, days: int = 90, n: int = 10) -> list[
                 "cost_usd": round(cost, 2),
                 "profit_usd": round(profit, 2),
                 "orders": int(p.orders_count or 0),
+                "refunds_usd": round(float(p.refunds_usd or 0), 2),
             }
         )
     out.sort(key=lambda x: x["profit_usd"], reverse=True)
@@ -239,7 +249,7 @@ def top_losers(db: Session, user_id: int, days: int = 90, n: int = 10) -> list[d
     design_share = _attribute_design_cost(products)
     out = []
     for p in products:
-        rev = float(p.revenue_usd or 0)
+        rev = _net_revenue(p)
         cost = _product_total_cost_usd(p) + design_share.get(p.id, 0.0)
         profit = rev - cost
         if cost <= 0 and rev <= 0:
@@ -256,6 +266,7 @@ def top_losers(db: Session, user_id: int, days: int = 90, n: int = 10) -> list[d
                 "profit_usd": round(profit, 2),
                 "orders": int(p.orders_count or 0),
                 "views": int(p.views_count or 0),
+                "refunds_usd": round(float(p.refunds_usd or 0), 2),
             }
         )
     out.sort(key=lambda x: x["profit_usd"])
@@ -267,12 +278,15 @@ def summary(db: Session, user_id: int, days: int = 30) -> dict[str, object]:
     since = datetime.now(UTC) - timedelta(days=days)
     products = _query_user_products(db, user_id, since).all()
     design_share = _attribute_design_cost(products)
-    revenue = sum(float(p.revenue_usd or 0) for p in products)
+    revenue = sum(_net_revenue(p) for p in products)
     cost = sum(
         _product_total_cost_usd(p) + design_share.get(p.id, 0.0) for p in products
     )
     profit = revenue - cost
     orders = sum(int(p.orders_count or 0) for p in products)
+    refunds = sum(float(p.refunds_usd or 0) for p in products)
+    fees = sum(float(getattr(p, "platform_fees_usd", 0) or 0) for p in products)
+    ads = sum(float(getattr(p, "ads_spend_usd", 0) or 0) for p in products)
     margin_pct = (profit / revenue * 100.0) if revenue > 0 else 0.0
     return {
         "days": days,
@@ -284,4 +298,7 @@ def summary(db: Session, user_id: int, days: int = 30) -> dict[str, object]:
         "margin_pct": round(margin_pct, 1),
         "orders": orders,
         "products": len(products),
+        "refunds_usd": round(refunds, 2),
+        "platform_fees_usd": round(fees, 2),
+        "ads_spend_usd": round(ads, 2),
     }

@@ -35,3 +35,6 @@ media/
 *.swp
 .DS_Store
 frontend/tsconfig.tsbuildinfo
+
+# uv lockfile (we use pyproject.toml as source of truth in CI; lockfile is local)
+backend/uv.lock

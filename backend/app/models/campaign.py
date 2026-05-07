@@ -55,6 +55,16 @@ class Campaign(Base):
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # --- A/B variant test (Wave 7) ---
+    # Group id linking variant campaigns. NULL = standalone (no test running).
+    ab_test_group: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    ab_variant_label: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # ^ "A" / "B" / "C" — used in dashboards
+    ab_test_winner: Mapped[bool] = mapped_column(Boolean, default=False)
+    ab_test_concluded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

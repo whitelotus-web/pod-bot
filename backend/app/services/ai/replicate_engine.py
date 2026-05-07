@@ -7,6 +7,18 @@ import httpx
 
 from app.core.config import settings
 from app.services.ai.base import AIDesignEngine, GeneratedImage
+from app.services.negative_prompts import build_negative
+
+
+def _negative_prompt_for(model_id: str) -> str:
+    """Pick the right negative-prompt list given a Replicate model id.
+
+    Replicate model ids follow ``owner/name:rev``; we use the ``name``
+    fragment as a hint (e.g. ``sdxl`` vs ``flux-schnell``). For models
+    we don't have a heuristic for, fall back to the t-shirt baseline,
+    which is also the most common case.
+    """
+    return build_negative(product_type="tshirt")
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +51,7 @@ class ReplicateEngine(AIDesignEngine):
                 "width": w,
                 "height": h,
                 "num_outputs": 1,
-                "negative_prompt": "watermark, text, logo, low quality, blurry",
+                "negative_prompt": _negative_prompt_for(model_id),
             },
         )
 

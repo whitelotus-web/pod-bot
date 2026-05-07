@@ -39,21 +39,22 @@ def test_mockup_templates():
 def test_platform_meta_covers_first_class():
     from app.services.platforms import PLATFORM_META
 
-    # Only the 3 API-backed platforms are supported; Selenium-only platforms
-    # (Redbubble / Teespring / Merch by Amazon) are intentionally excluded.
-    assert set(PLATFORM_META.keys()) == {"printify", "printful", "etsy"}
+    api_backed = {"printify", "printful", "etsy", "gelato"}
+    manual = {"redbubble", "society6", "amazon_merch", "spreadshirt"}
+    assert api_backed.issubset(PLATFORM_META.keys())
+    assert manual.issubset(PLATFORM_META.keys())
     for meta in PLATFORM_META.values():
         assert meta["supported"] is True
 
 
-def test_platform_factory_rejects_legacy():
+def test_platform_factory_rejects_unknown():
     import pytest
 
     from app.services.platforms import get_platform
 
-    for legacy in ("redbubble", "teespring", "merch_amazon"):
+    for unknown in ("teespring", "merch_amazon", "definitely_not_a_platform"):
         with pytest.raises(ValueError, match="Unknown platform"):
-            get_platform(legacy, account=None)
+            get_platform(unknown, account=None)
 
 
 def test_celery_tasks_registered():
